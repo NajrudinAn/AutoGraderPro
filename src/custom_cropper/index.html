@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    #container {
+      position: relative;
+      display: inline-block;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    img {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      pointer-events: none;
+    }
+
+    #lens {
+      position: absolute;
+      border: 3px solid #00AAFF;
+      border-radius: 50%;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+      background-color: white;
+      pointer-events: none;
+      display: none;
+      z-index: 100;
+      /* Lens size */
+      width: 250px;
+      height: 250px;
+      margin-left: -125px;
+      /* adjust center */
+      margin-top: -125px;
+      /* adjust center */
+      background-repeat: no-repeat;
+    }
+
+    #selection {
+      position: absolute;
+      border: 2px solid #00AAFF;
+      background-color: rgba(0, 170, 255, 0.2);
+      pointer-events: auto;
+      /* allows interaction */
+      display: none;
+      z-index: 50;
+      cursor: move;
+    }
+
+    .handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background-color: #00AAFF;
+      border: 2px solid white;
+      border-radius: 50%;
+      z-index: 51;
+    }
+
+    #h-nw {
+      top: -8px;
+      left: -8px;
+      cursor: nwse-resize;
+    }
+
+    #h-ne {
+      top: -8px;
+      right: -8px;
+      cursor: nesw-resize;
+    }
+
+    #h-sw {
+      bottom: -8px;
+      left: -8px;
+      cursor: nesw-resize;
+    }
+
+    #h-se {
+      bottom: -8px;
+      right: -8px;
+      cursor: nwse-resize;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 101;
+      /* Draw over the lens */
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="container">
+    <div id="controls" style="position: absolute; top: 10px; left: 10px; z-index: 200;">
+      <button id="toggleZoomBtn"
+        style="padding: 5px 10px; cursor: pointer; background: rgba(255, 255, 255, 0.9); border: 2px solid #00AAFF; border-radius: 5px; font-weight: bold; color: #00AAFF; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">Zoom
+        Preview: ON</button>
+    </div>
+    <img id="image" src="" />
+    <div id="selection">
+      <div class="handle" id="h-nw"></div>
+      <div class="handle" id="h-ne"></div>
+      <div class="handle" id="h-sw"></div>
+      <div class="handle" id="h-se"></div>
+    </div>
+    <div id="lens"></div>
+    <canvas id="overlayCanvas"></canvas>
+  </div>
+
+  <script>
+    // ---- Streamlit Component API (VanillaJS) ----
+    function sendMessageToStreamlitClient(type, data) {
+      var outData = Object.assign({
+        isStreamlitMessage: true,
+        type: type,
+      }, data);
+      window.parent.postMessage(outData, "*");
+    }
+    function Streamlit_setFrameHeight(height) {
+      sendMessageToStreamlitClient("streamlit:setFrameHeight", { height: height });
+    }
+    function Streamlit_setComponentValue(value) {
+      sendMessageToStreamlitClient("streamlit:setComponentValue", { value: value });
+    }
+    function Streamlit_setComponentReady() {
+      sendMessageToStreamlitClient("streamlit:componentReady", { apiVersion: 1 });
+    }
+
+    window.addEventListener("message", function (event) {
+      if (event.data.type === "streamlit:render") {
+        onRender(event.data);
+      }
+    });
+    // ----------------------------------------------
+
+
+    let img = document.getElementById("image");
+    let container = document.getElementById("container");
+    let selectionbox = document.getElementById("selection");
+    let lens = document.getElementById("lens");
+    let canvas = document.getElementById("overlayCanvas");
+    let ctx = canvas.getContext("2d");
+
+    let isDraggingBox = false;
+    let isResizing = false;
+    let resizeHandle = "";
+
+    let box = { x: 0, y: 0, w: 0, h: 0 };
+    let hasBox = false;
+
+    let isZoomEnabled = true;
+
+    let toggleBtn = document.getElementById("toggleZoomBtn");
+    toggleBtn.addEventListener("mousedown", (e) => e.stopPropagation());
+    toggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      isZoomEnabled = !isZoomEnabled;
+      toggleBtn.innerText = "Zoom Preview: " + (isZoomEnabled ? "ON" : "OFF");
+      if (!isZoomEnabled) {
+        lens.style.display = "none";
+      }
+    });
+
+    // Props from Python
+    let props = {
+      z_items: 10,
+      z_opts: 4,
+      z_dir: "vertical",
+      ox: 0,
+      oy: 0,
+      rad_size: 10,
+      box: null
+    };
+
+    const palette = [
+      "rgb(255, 50, 50)", "rgb(50, 255, 50)", "rgb(50, 50, 255)",
+      "rgb(255, 255, 50)", "rgb(255, 50, 255)", "rgb(50, 255, 255)"
+    ];
+
+    function onRender(data) {
+      const args = data.args;
+
+      // Set props
+      props.z_items = args.z_items || props.z_items;
+      props.z_opts = args.z_opts || props.z_opts;
+      props.z_dir = args.z_dir || props.z_dir;
+      props.ox = args.ox || 0;
+      props.oy = args.oy || 0;
+      props.rad_size = args.rad_size || props.rad_size;
+
+      // Set Image
+      if (args.image_b64) {
+        const src = `data:image/jpeg;base64,${args.image_b64}`;
+        if (img.src !== src) {
+          img.src = src;
+          img.onload = () => {
+            lens.style.backgroundImage = `url('${img.src}')`;
+            Streamlit_setFrameHeight(container.scrollHeight);
+            canvas.width = container.offsetWidth;
+            canvas.height = container.offsetHeight;
+            if (hasBox) drawPersistentBubbles();
+          };
+        } else {
+          canvas.width = container.offsetWidth;
+          canvas.height = container.offsetHeight;
+          if (hasBox) drawPersistentBubbles();
+        }
+      }
+    }
+
+    function getMousePos(e) {
+      let rect = img.getBoundingClientRect();
+      let x = e.clientX - rect.left;
+      let y = e.clientY - rect.top;
+
+      // Clamp coordinates tightly to the image boundaries
+      x = Math.max(0, Math.min(x, img.width));
+      y = Math.max(0, Math.min(y, img.height));
+
+      return { x: x, y: y };
+    }
+
+    function renderLensView(mouseX, mouseY) {
+      let zoomRatio = 3;
+      let lens_w = 250;
+
+      // Calculate where the background SHOULD be
+      let targetBgX = (mouseX * zoomRatio) - (lens_w / 2);
+      let targetBgY = (mouseY * zoomRatio) - (lens_w / 2);
+
+      // Clamp the background position tightly to prevent hitting the boundaries
+      let bgX = Math.max(0, Math.min(targetBgX, (img.width * zoomRatio) - lens_w));
+      let bgY = Math.max(0, Math.min(targetBgY, (img.height * zoomRatio) - lens_w));
+
+      // Calculate the difference between where the mouse IS and where the background clamped
+      let shiftX = targetBgX - bgX;
+      let shiftY = targetBgY - bgY;
+
+      lens.style.left = mouseX + "px";
+      lens.style.top = mouseY + "px";
+      lens.style.backgroundSize = (img.width * zoomRatio) + "px " + (img.height * zoomRatio) + "px";
+      lens.style.backgroundPosition = `-${bgX}px -${bgY}px`;
+
+      drawLensBubbles(mouseX, mouseY, zoomRatio, shiftX, shiftY);
+    }
+
+    function drawPersistentBubbles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!hasBox || box.w <= 0 || box.h <= 0) return;
+
+      ctx.save();
+      for (let i = 0; i < props.z_items; i++) {
+        let q_color = palette[i % palette.length];
+
+        for (let j = 0; j < props.z_opts; j++) {
+          let u, v;
+          if (props.z_dir === "vertical") {
+            u = (j + 0.5) / Math.max(1, props.z_opts);
+            v = (i + 0.5) / Math.max(1, props.z_items);
+          } else {
+            u = (i + 0.5) / Math.max(1, props.z_items);
+            v = (j + 0.5) / Math.max(1, props.z_opts);
+          }
+
+          let vx = box.x + (u * box.w) + props.ox;
+          let vy = box.y + (v * box.h) + props.oy;
+
+          ctx.beginPath();
+          ctx.arc(vx, vy, props.rad_size, 0, Math.PI * 2);
+          ctx.strokeStyle = q_color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(vx, vy, 2, 0, Math.PI * 2);
+          ctx.fillStyle = "white";
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawLensBubbles(mouseX, mouseY, zoomRatio, shiftX, shiftY) {
+      if (!hasBox || box.w <= 0 || box.h <= 0) return;
+      drawPersistentBubbles();
+
+      ctx.save();
+
+      // Erase normal-sized bubbles under the lens area
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, 125, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Create circular clip matching the lens
+      ctx.beginPath();
+      ctx.arc(mouseX, mouseY, 125, 0, Math.PI * 2);
+      ctx.clip();
+
+      // Adjust the "center" of our drawing based on the clamp shift
+      let drawCenterLeft = mouseX - shiftX;
+      let drawCenterTop = mouseY - shiftY;
+
+      // Draw the zoomed blue box outline and background inside the lens
+      let dzx = (box.x - mouseX) * zoomRatio;
+      let dzy = (box.y - mouseY) * zoomRatio;
+      let z_x = drawCenterLeft + dzx;
+      let z_y = drawCenterTop + dzy;
+      let z_w = box.w * zoomRatio;
+      let z_h = box.h * zoomRatio;
+      ctx.strokeStyle = '#00AAFF';
+      ctx.lineWidth = 2 * zoomRatio;
+      ctx.strokeRect(z_x, z_y, z_w, z_h);
+      ctx.fillStyle = 'rgba(0, 170, 255, 0.2)';
+      ctx.fillRect(z_x, z_y, z_w, z_h);
+
+      // Now draw the circles inside the clip
+      for (let i = 0; i < props.z_items; i++) {
+        let q_color = palette[i % palette.length];
+
+        for (let j = 0; j < props.z_opts; j++) {
+          let u, v;
+          if (props.z_dir === "vertical") {
+            u = (j + 0.5) / Math.max(1, props.z_opts);
+            v = (i + 0.5) / Math.max(1, props.z_items);
+          } else {
+            u = (i + 0.5) / Math.max(1, props.z_items);
+            v = (j + 0.5) / Math.max(1, props.z_opts);
+          }
+
+          // original coords relative to image
+          let orig_vx = box.x + (u * box.w) + props.ox;
+          let orig_vy = box.y + (v * box.h) + props.oy;
+
+          let dx = (orig_vx - mouseX) * zoomRatio;
+          let dy = (orig_vy - mouseY) * zoomRatio;
+
+          let zoom_vx = drawCenterLeft + dx;
+          let zoom_vy = drawCenterTop + dy;
+          let zoom_rad = props.rad_size * zoomRatio;
+
+          ctx.beginPath();
+          ctx.arc(zoom_vx, zoom_vy, zoom_rad, 0, Math.PI * 2);
+          ctx.strokeStyle = q_color;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // Fill with semi-transparent color instead of white dot
+          let fillColor = q_color.replace('rgb', 'rgba').replace(')', ', 0.3)');
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(zoom_vx, zoom_vy, 3, 0, Math.PI * 2);
+          ctx.fillStyle = "white";
+          ctx.fill();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function updateVisualBox() {
+      selectionbox.style.left = box.x + "px";
+      selectionbox.style.top = box.y + "px";
+      selectionbox.style.width = box.w + "px";
+      selectionbox.style.height = box.h + "px";
+      selectionbox.style.display = "block";
+    }
+
+    // Handle interactions
+    document.querySelectorAll('.handle').forEach(h => {
+      h.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        isResizing = true;
+        resizeHandle = e.target.id;
+        let pos = getMousePos(e);
+        startX = pos.x;
+        startY = pos.y;
+        if (isZoomEnabled) {
+          lens.style.display = "block";
+          renderLensView(pos.x, pos.y);
+        } else {
+          drawPersistentBubbles();
+        }
+      });
+    });
+
+    selectionbox.addEventListener("mousedown", (e) => {
+      if (isResizing) return;
+      e.stopPropagation();
+      isDraggingBox = true;
+      let pos = getMousePos(e);
+      startX = pos.x;
+      startY = pos.y;
+      if (isZoomEnabled) {
+        lens.style.display = "block";
+        renderLensView(pos.x, pos.y);
+      } else {
+        drawPersistentBubbles();
+      }
+    });
+
+    container.addEventListener("mousedown", (e) => {
+      if (e.target !== img && e.target !== container) return;
+      isDragging = true;
+      hasBox = true;
+      let pos = getMousePos(e);
+      startX = pos.x;
+      startY = pos.y;
+      box = { x: startX, y: startY, w: 0, h: 0 };
+      updateVisualBox();
+      if (isZoomEnabled) {
+        lens.style.display = "block";
+        renderLensView(pos.x, pos.y);
+      } else {
+        drawPersistentBubbles();
+      }
+    });
+
+    // Fix edge freezing by listening to window
+    window.addEventListener("mousemove", (e) => {
+      let pos = getMousePos(e);
+
+      if (isDragging) {
+        box.x = Math.min(startX, pos.x);
+        box.y = Math.min(startY, pos.y);
+        box.w = Math.abs(pos.x - startX);
+        box.h = Math.abs(pos.y - startY);
+        updateVisualBox();
+        if (isZoomEnabled) renderLensView(pos.x, pos.y);
+        else drawPersistentBubbles();
+      }
+      else if (isDraggingBox) {
+        let dx = pos.x - startX;
+        let dy = pos.y - startY;
+        box.x += dx;
+        box.y += dy;
+        startX = pos.x;
+        startY = pos.y;
+        updateVisualBox();
+        if (isZoomEnabled) renderLensView(pos.x, pos.y);
+        else drawPersistentBubbles();
+      }
+      else if (isResizing) {
+        if (resizeHandle === "h-se") {
+          box.w = pos.x - box.x;
+          box.h = pos.y - box.y;
+        } else if (resizeHandle === "h-sw") {
+          box.w = (box.x + box.w) - pos.x;
+          box.h = pos.y - box.y;
+          box.x = pos.x;
+        } else if (resizeHandle === "h-ne") {
+          box.w = pos.x - box.x;
+          box.h = (box.y + box.h) - pos.y;
+          box.y = pos.y;
+        } else if (resizeHandle === "h-nw") {
+          box.w = (box.x + box.w) - pos.x;
+          box.h = (box.y + box.h) - pos.y;
+          box.x = pos.x;
+          box.y = pos.y;
+        }
+        updateVisualBox();
+        if (isZoomEnabled) renderLensView(pos.x, pos.y);
+        else drawPersistentBubbles();
+      }
+    });
+
+    window.addEventListener("mouseup", (e) => {
+      if (isDragging || isDraggingBox || isResizing) {
+        isDragging = false;
+        isDraggingBox = false;
+        isResizing = false;
+        lens.style.display = "none";
+
+        // Prevent negative widths/heights
+        if (box.w < 0) { box.x += box.w; box.w = Math.abs(box.w); }
+        if (box.h < 0) { box.y += box.h; box.h = Math.abs(box.h); }
+
+        updateVisualBox();
+        drawPersistentBubbles(); // Keep the colored circles on the screen
+
+        // Send to Streamlit
+        let ratioX = img.naturalWidth / img.width;
+        let ratioY = img.naturalHeight / img.height;
+        let boxWidth = Math.abs(box.w);
+        let boxHeight = Math.abs(box.h);
+
+        let outDict = {
+          left: Math.round(box.x * ratioX),
+          top: Math.round(box.y * ratioY),
+          width: Math.round(boxWidth * ratioX),
+          height: Math.round(boxHeight * ratioY)
+        };
+
+        Streamlit_setComponentValue(outDict);
+      }
+    });
+
+    // Fix dragging freeze when leaving the iframe completely
+    document.addEventListener("mouseleave", (e) => {
+      if (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        if (isDragging || isDraggingBox || isResizing) {
+          window.dispatchEvent(new Event("mouseup"));
+        }
+      }
+    });
+
+    // Let Streamlit know we're ready
+    Streamlit_setComponentReady();
+    Streamlit_setFrameHeight(100);
+  </script>
+</body>
+
+</html>

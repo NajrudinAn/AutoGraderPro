@@ -1,0 +1,2434 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>AutoGraderPro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Live Cropper Styles */
+        #cropper-container {
+            position: relative;
+            display: inline-block;
+            user-select: none;
+            -webkit-user-drag: none;
+            margin-top: 20px;
+        }
+
+        #image-view {
+            display: block;
+            max-width: 1000px;
+            /* CANVAS_W */
+            pointer-events: none;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        #selection {
+            position: absolute;
+            border: 2px dashed #00AAFF;
+            background-color: rgba(0, 170, 255, 0.1);
+            display: none;
+            pointer-events: auto;
+            cursor: move;
+            z-index: 10;
+        }
+
+        .handle {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: white;
+            border: 2px solid #00AAFF;
+            border-radius: 50%;
+            z-index: 20;
+        }
+
+        #h-nw {
+            top: -6px;
+            left: -6px;
+            cursor: nwse-resize;
+        }
+
+        #h-ne {
+            top: -6px;
+            right: -6px;
+            cursor: nesw-resize;
+        }
+
+        #h-sw {
+            bottom: -6px;
+            left: -6px;
+            cursor: nesw-resize;
+        }
+
+        #h-se {
+            bottom: -6px;
+            right: -6px;
+            cursor: nwse-resize;
+        }
+
+        #lens {
+            position: absolute;
+            width: 150px;
+            height: 150px;
+            border: 1px solid #7b7b7b;
+            border-radius: 8px;
+            pointer-events: none;
+            display: none;
+            z-index: 50;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        #lens canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        #overlayCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .tab-active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm py-4 px-8 border-b border-gray-200 flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">AutoGraderPro</h1>
+            <p class="text-sm text-gray-500">Version 1.0 | School Edition</p>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col">
+            <nav class="flex-1 py-4">
+                <ul>
+                    <li>
+                        <button onclick="switchTab('tab-setup')" id="nav-setup"
+                            class="w-full text-left px-6 py-3 font-medium hover:bg-gray-50 border-l-4 border-blue-500 bg-blue-50 text-blue-700">1.
+                            Template Setup</button>
+                    </li>
+                    <li>
+                        <button onclick="switchTab('tab-upload')" id="nav-upload"
+                            class="w-full text-left px-6 py-3 font-medium hover:bg-gray-50 border-l-4 border-transparent text-gray-600">2.
+                            Upload Answer Key</button>
+                    </li>
+                    <li>
+                        <button onclick="switchTab('tab-grade')" id="nav-grade"
+                            class="w-full text-left px-6 py-3 font-medium hover:bg-gray-50 border-l-4 border-transparent text-gray-600">3.
+                            Grade Papers</button>
+                    </li>
+                    <li>
+                        <button onclick="switchTab('tab-results')" id="nav-results"
+                            class="w-full text-left px-6 py-3 font-medium hover:bg-gray-50 border-l-4 border-transparent text-gray-600">4.
+                            View Results</button>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Content Area -->
+        <main class="flex-1 overflow-y-auto p-8">
+
+            <!-- TAB 1: Template Setup -->
+            <section id="tab-setup" class="block">
+                <h2 class="text-3xl font-bold mb-2">Template Setup</h2>
+                <p class="text-gray-600 mb-8">Set up where the questions and student info are located on your OMR sheet.
+                </p>
+
+                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8">
+                    <label class="block font-medium mb-2">Template Action</label>
+                    <select id="template-action" class="border rounded p-2 mb-4 w-64" onchange="toggleTemplateAction()">
+                        <option value="new">Create New Template</option>
+                        <option value="edit">Edit Existing Template</option>
+                    </select>
+
+                    <div id="edit-template-section" class="hidden">
+                        <label class="block font-medium mb-2">Select Template to Edit</label>
+                        <select id="template-list" class="border rounded p-2 mb-4 w-64"></select>
+                        <button onclick="loadTemplate()" class="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Load
+                            Template</button>
+                    </div>
+
+                    <hr class="my-6">
+                    <div id="template-manager-section" class="mb-8">
+                        <h3 class="font-bold text-lg mb-4 text-blue-800 flex justify-between items-center">
+                            Template Manager
+                            <button onclick="loadTemplateManagerList()"
+                                class="text-sm font-normal bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">Refresh
+                                List</button>
+                        </h3>
+                        <div class="bg-gray-50 p-0 rounded-lg shadow-inner border border-gray-200 overflow-hidden">
+                            <table class="w-full text-left border-collapse">
+                                <thead class="bg-gray-200 text-gray-700 text-sm">
+                                    <tr>
+                                        <th class="p-3 border-b">Template Name</th>
+                                        <th class="p-3 border-b">Default</th>
+                                        <th class="p-3 border-b text-center">Zones</th>
+                                        <th class="p-3 border-b text-center">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="manager-template-body" class="text-gray-800 text-sm">
+                                    <tr>
+                                        <td colspan="4" class="p-4 text-center text-gray-500">Loading templates...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <hr class="my-6">
+                    <h3 class="font-bold text-lg mb-4">Step 1: Upload Blank OMR Sheet</h3>
+                    <input type="file" id="blank-sheet-upload" accept="image/jpeg, image/png" class="mb-4 block">
+
+                    <button id="process-anchor-btn" onclick="processAnchors()"
+                        class="bg-blue-600 text-white px-4 py-2 rounded font-medium shadow hover:bg-blue-700 hidden">Process
+                        Sheet Anchors</button>
+                </div>
+
+                <div id="cropper-section" class="hidden">
+                    <hr class="my-6">
+                    <h3 class="font-bold text-lg mb-4">Step 2: Draw Question Boxes</h3>
+
+                    <!-- Box Settings -->
+                    <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg mb-6 grid grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Box Type</label>
+                            <input type="radio" name="boxType" value="questions" checked
+                                onchange="applyBoxTypeDefaults('questions')"> Questions
+                            <input type="radio" name="boxType" value="info" class="ml-4"
+                                onchange="applyBoxTypeDefaults('info')"> Info
+                        </div>
+                        <div>
+                            <label id="label-box-dir" class="block text-sm font-medium mb-1">Question Direction</label>
+                            <select id="box-dir" class="border p-1 rounded w-full">
+                                <option value="vertical">Vertical</option>
+                                <option value="horizontal">Horizontal</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label id="label-box-items" class="block text-sm font-medium mb-1">no of quesition</label>
+                            <input type="number" id="box-items" value="10" class="border p-1 rounded w-full">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Options per Item</label>
+                            <input type="number" id="box-opts" value="4" class="border p-1 rounded w-full">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Choice Sequence (comma separated)</label>
+                            <input type="text" id="box-seq" value="A,B,C,D" class="border p-1 rounded w-full">
+                        </div>
+                        <div>
+                            <label id="label-box-start" class="block text-sm font-medium mb-1">Start Question ID</label>
+                            <input type="text" id="box-start" value="1" class="border p-1 rounded w-full">
+                        </div>
+                    </div>
+
+                    <p class="text-sm text-gray-600 mb-2">Draw a box below to preview. The magnifying lens will help you
+                        align.</p>
+
+                    <div class="flex gap-4">
+                        <button onclick="commitZone()"
+                            class="bg-green-600 text-white px-4 py-2 rounded font-medium shadow hover:bg-green-700 mb-4">Save
+                            This Box</button>
+                        <button onclick="toggleZoom()" id="toggleZoomBtn"
+                            class="bg-white border-2 border-blue-500 text-blue-600 px-4 py-2 rounded font-bold shadow hover:bg-blue-50 mb-4">Zoom
+                            Preview: ON</button>
+                    </div>
+
+                    <!-- Live Cropper Native HTML -->
+                    <div id="cropper-container">
+                        <img id="image-view" src="" />
+                        <div id="selection">
+                            <div class="handle" id="h-nw"></div>
+                            <div class="handle" id="h-ne"></div>
+                            <div class="handle" id="h-sw"></div>
+                            <div class="handle" id="h-se"></div>
+                        </div>
+                        <div id="lens"><canvas id="lensCanvas" width="150" height="150"></canvas></div>
+                        <canvas id="overlayCanvas"></canvas>
+                    </div>
+
+
+                    <hr class="my-6">
+                    <p id="edit-zone-hint"
+                        class="hidden mb-4 text-sm text-blue-600 bg-blue-50 border border-blue-200 p-3 rounded">
+                        <b>Editing Zone:</b> <span id="edit-zone-name"></span> -- Draw a new box on the image, then
+                        click
+                        "Save This Box" to replace it. <button onclick="cancelZoneEdit()"
+                            class="ml-2 text-red-600 underline text-xs">Cancel</button>
+                    </p>
+                    <h3 class="font-bold text-lg mb-4">Step 3: Save Template</h3>
+                    <div id="zone-list-display" class="bg-white p-4 border rounded shadow-sm mb-4 min-h-[100px]">
+                        <p class="text-gray-400 italic">No boxes saved yet.</p>
+                    </div>
+
+                    <div class="flex flex-wrap gap-4 items-center">
+                        <input type="text" id="template-name" placeholder="Template Name"
+                            class="border p-2 rounded w-64">
+                        <label><input type="checkbox" id="template-default" checked> Set as Default Template</label>
+                        <button onclick="saveTemplate()" id="save-template-btn"
+                            class="bg-blue-600 text-white px-6 py-2 rounded font-medium shadow hover:bg-blue-700">Save
+                            Complete Template</button>
+                        <button onclick="clearZones()" class="text-red-600 underline">Clear All Boxes</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: Upload Answer Key -->
+            <section id="tab-upload" class="hidden">
+                <h2 class="text-3xl font-bold mb-2">Upload Answer Key</h2>
+                <p class="text-gray-600 mb-8">Upload a filled-out OMR sheet to serve as the correct answer key for
+                    grading.</p>
+
+                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                    <div class="grid grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <label class="block font-medium mb-2">Select Template</label>
+                            <select id="upload-template-list" class="border rounded p-2 w-full"></select>
+                        </div>
+                        <div>
+                            <label class="block font-medium mb-2">Subject Name</label>
+                            <input type="text" id="upload-subject-name" placeholder="e.g. Mathematics"
+                                class="border rounded p-2 w-full">
+                        </div>
+                        <div>
+                            <label class="block font-medium mb-2">Exam Date</label>
+                            <input type="date" id="upload-exam-date" class="border rounded p-2 w-full">
+                        </div>
+                        <div>
+                            <label class="block font-medium mb-2">Passing Marks (Optional)</label>
+                            <input type="number" id="upload-passing-marks" placeholder="e.g. 50" min="0" value="0"
+                                class="border rounded p-2 w-full">
+                        </div>
+                    </div>
+
+                    <hr class="my-6">
+                    <h3 class="font-bold text-lg mb-4">Upload Correct Answer Sheet</h3>
+                    <input type="file" id="answer-sheet-upload" accept="image/jpeg, image/png" class="mb-4 block">
+
+                    <button onclick="processAnswerKey()"
+                        class="bg-green-600 text-white px-6 py-2 rounded font-medium shadow hover:bg-green-700">Scan
+                        Answer Key</button>
+
+                    <div id="ak-status" class="mt-4 hidden p-4 rounded"></div>
+
+                    <!-- Editable Preview Section -->
+                    <div id="ak-preview-section" class="mt-6 hidden border p-4 rounded bg-gray-50 border-gray-200">
+                        <h4 class="font-bold text-lg mb-4">Review & Edit Detected Answers</h4>
+                        <div class="flex gap-6">
+                            <!-- Left: Scanned Image -->
+                            <div class="w-1/2">
+                                <img id="ak-preview-image" class="w-full rounded shadow border"
+                                    alt="Scanned Answer Key">
+                            </div>
+
+                            <!-- Right: Editable Inputs -->
+                            <div class="w-1/2 flex flex-col">
+                                <p class="text-sm text-gray-600 mb-4">Verify the detected answers below. You can
+                                    manually change any incorrect or blank (-) values.</p>
+
+                                <!-- Scrollable grid -->
+                                <div id="ak-preview-inputs"
+                                    class="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto max-h-[500px] border p-3 rounded bg-white">
+                                    <!-- Inputs injected by JS -->
+                                </div>
+
+                                <div class="mt-4 flex justify-end">
+                                    <button onclick="saveFinalAnswerKey()"
+                                        class="bg-blue-600 text-white px-6 py-2 rounded font-bold shadow hover:bg-blue-700">Save
+                                        Final Answer Key</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mt-8">
+                    <h3 class="font-bold text-lg mb-4 text-blue-800 flex justify-between items-center">
+                        Answer Key Manager
+                        <button onclick="loadKeysListManager()"
+                            class="text-sm font-normal bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200">Refresh
+                            List</button>
+                    </h3>
+                    <div class="bg-gray-50 p-0 rounded-lg shadow-inner border border-gray-200 overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-gray-200 text-gray-700 text-sm">
+                                <tr>
+                                    <th class="p-3 border-b">Subject Name & Info</th>
+                                    <th class="p-3 border-b">Template Used</th>
+                                    <th class="p-3 border-b text-center">Questions</th>
+                                    <th class="p-3 border-b text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="manager-keys-body" class="text-gray-800 text-sm">
+                                <tr>
+                                    <td colspan="6" class="p-4 text-center text-gray-500">Loading answer keys...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 3: Grade Papers -->
+            <section id="tab-grade" class="hidden">
+                <h2 class="text-3xl font-bold mb-2">Grade Student Papers</h2>
+                <p class="text-gray-600 mb-8">Upload student OMR sheets to automatically grade them against an Answer
+                    Key.</p>
+
+                <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200 mb-8">
+                    <label class="block font-medium mb-2">Select Answer Key to Grade With</label>
+                    <select id="grade-key-list" class="border rounded p-2 w-64 mb-6"></select>
+
+                    <h3 class="font-bold text-lg mb-4">Upload Student OMR Sheet(s)</h3>
+                    <input type="file" id="student-sheet-upload" accept="image/jpeg, image/png" multiple
+                        class="mb-4 block">
+
+                    <button onclick="gradePaper()"
+                        class="bg-blue-600 text-white px-6 py-2 rounded font-medium shadow hover:bg-blue-700">Grade
+                        Sheet</button>
+
+                    <div id="grade-status" class="mt-4 hidden p-4 rounded text-red-600 bg-red-50 border border-red-200">
+                    </div>
+                </div>
+
+                <div id="bulk-grade-results" class="hidden mt-8 space-y-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-2xl font-bold">Graded Papers</h3>
+                        <button onclick="expandAllResults()"
+                            class="text-sm font-medium text-blue-600 hover:text-blue-800 underline">Expand All</button>
+                    </div>
+                    <!-- Accordion items will be injected here -->
+                    <div id="accordion-container" class="space-y-3"></div>
+                </div>
+            </section>
+
+            <!-- TAB 4: View Results -->
+            <section id="tab-results" class="hidden">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-3xl font-bold mb-2">Grading History</h2>
+                        <p class="text-gray-600">View all saved student results and export data to CSV.</p>
+                    </div>
+                    <button onclick="exportResultsCSV()"
+                        class="bg-green-600 text-white font-bold py-2 px-6 rounded shadow hover:bg-green-700 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                            </path>
+                        </svg>
+                        Export Filtered CSV
+                    </button>
+                </div>
+
+                <!-- Filter Section -->
+                <div class="bg-blue-50 p-4 border border-blue-200 rounded-lg mb-6 shadow-sm">
+                    <h4 class="font-bold text-blue-900 mb-3 text-sm uppercase tracking-wide">Filter & Search Results
+                    </h4>
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-blue-800 mb-1">Search Student Data</label>
+                            <input type="text" id="filter-search" oninput="applyResultsFilter()"
+                                placeholder="e.g. Roll No, UDISE"
+                                class="w-full border-blue-300 rounded p-2 text-sm focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-800 mb-1">Answer Key Used</label>
+                            <select id="filter-key" onchange="applyResultsFilter()"
+                                class="w-full border-blue-300 rounded p-2 text-sm focus:ring-blue-500">
+                                <option value="">All Answer Keys...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-800 mb-1">Min Percentage (%)</label>
+                            <input type="number" id="filter-min-pct" oninput="applyResultsFilter()" placeholder="0"
+                                min="0" max="100"
+                                class="w-full border-blue-300 rounded p-2 text-sm focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-blue-800 mb-1">Max Percentage (%)</label>
+                            <input type="number" id="filter-max-pct" oninput="applyResultsFilter()" placeholder="100"
+                                min="0" max="100"
+                                class="w-full border-blue-300 rounded p-2 text-sm focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- summary stats bar -->
+                <div id="results-stats" class="grid grid-cols-4 gap-4 mb-6 hidden">
+                    <div class="bg-white border rounded-lg p-4 shadow-sm text-center">
+                        <p class="text-3xl font-black text-gray-800" id="stat-total">0</p>
+                        <p class="text-xs text-gray-500 font-semibold uppercase">Total Papers</p>
+                    </div>
+                    <div class="bg-white border rounded-lg p-4 shadow-sm text-center">
+                        <p class="text-3xl font-black text-green-600" id="stat-pass">0</p>
+                        <p class="text-xs text-gray-500 font-semibold uppercase">Passed</p>
+                    </div>
+                    <div class="bg-white border rounded-lg p-4 shadow-sm text-center">
+                        <p class="text-3xl font-black text-red-600" id="stat-fail">0</p>
+                        <p class="text-xs text-gray-500 font-semibold uppercase">Failed</p>
+                    </div>
+                    <div class="bg-white border rounded-lg p-4 shadow-sm text-center">
+                        <p class="text-3xl font-black text-blue-600" id="stat-avg">0%</p>
+                        <p class="text-xs text-gray-500 font-semibold uppercase">Average Score</p>
+                    </div>
+                </div>
+
+                <div class="bg-white p-0 rounded-lg shadow border border-gray-200 overflow-hidden">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-100 text-gray-700 text-sm">
+                            <tr>
+                                <th class="p-4 border-b">#</th>
+                                <th class="p-4 border-b">Timestamp</th>
+                                <th class="p-4 border-b">Answer Key Used</th>
+                                <th class="p-4 border-b">Student Data</th>
+                                <th class="p-4 border-b">Score</th>
+                                <th class="p-4 border-b">Percentage</th>
+                                <th class="p-4 border-b text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-table-body" class="text-gray-800 text-sm">
+                            <tr>
+                                <td colspan="7" class="p-8 text-center text-gray-500">Loading results...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- full detail modal for viewing / editing a result -->
+                <div id="result-detail-modal"
+                    class="fixed inset-0 bg-black bg-opacity-75 hidden z-50 flex items-center justify-center p-4"
+                    onclick="if(event.target===this) closeDetailModal()">
+                    <div class="bg-white rounded-lg max-w-6xl w-full max-h-[95vh] flex flex-col relative shadow-2xl">
+                        <div class="flex justify-between items-center p-5 border-b">
+                            <h3 class="font-bold text-xl" id="detail-modal-title">Result Details</h3>
+                            <button onclick="closeDetailModal()"
+                                class="bg-gray-200 text-gray-800 rounded-full w-8 h-8 font-bold flex items-center justify-center hover:bg-gray-300">&times;</button>
+                        </div>
+                        <div class="flex-1 overflow-auto p-5">
+                            <div class="flex gap-6" id="detail-modal-body">
+                                <!-- left: graded image -->
+                                <div class="flex-1 bg-gray-100 rounded flex justify-center items-center overflow-hidden"
+                                    style="min-height: 400px; max-height: 700px;">
+                                    <img id="detail-modal-image" class="max-w-full max-h-full object-contain" src="">
+                                </div>
+                                <!-- right: info + score breakdown -->
+                                <div class="w-[380px] flex flex-col gap-4" id="detail-modal-right">
+                                    <!-- edit button at the top -->
+                                    <div class="flex justify-end">
+                                        <button id="detail-edit-btn" onclick="toggleDetailEditMode()"
+                                            class="text-sm bg-blue-100 text-blue-700 px-4 py-1.5 rounded hover:bg-blue-200 font-semibold">Edit</button>
+                                    </div>
+                                    <!-- student info -->
+                                    <div class="bg-gray-50 border rounded p-3">
+                                        <h4 class="font-bold text-sm text-gray-600 mb-2">Student Info</h4>
+                                        <div id="detail-info-display"></div>
+                                    </div>
+                                    <!-- score -->
+                                    <div class="bg-gray-50 border rounded p-3 flex justify-between items-center">
+                                        <span class="font-bold text-gray-600 text-sm">Score</span>
+                                        <span class="font-black text-xl" id="detail-score-display">-</span>
+                                    </div>
+                                    <!-- answers table -->
+                                    <h4 class="font-bold text-sm text-gray-600">Score Breakdown</h4>
+                                    <div class="flex-1 overflow-y-auto border rounded bg-gray-50 p-2 max-h-[400px]">
+                                        <table class="w-full text-sm">
+                                            <thead>
+                                                <tr class="border-b">
+                                                    <th class="text-left p-1">Q</th>
+                                                    <th class="p-1">Given</th>
+                                                    <th class="p-1">Correct</th>
+                                                    <th class="text-right p-1">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="detail-table-body"></tbody>
+                                        </table>
+                                    </div>
+                                    <!-- save/cancel for edit mode -->
+                                    <div id="detail-save-section" class="hidden flex justify-end gap-2 pt-2 border-t">
+                                        <button onclick="cancelDetailEdit()"
+                                            class="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium rounded hover:bg-gray-100">Cancel</button>
+                                        <button onclick="saveDetailEdit()"
+                                            class="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700">Save
+                                            Changes</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Modal for Viewing Answer Key -->
+        <div id="key-modal"
+            class="fixed inset-0 bg-black bg-opacity-75 hidden z-50 flex items-center justify-center p-8">
+            <div class="bg-white rounded p-6 max-w-2xl w-full flex flex-col relative max-h-[80vh]">
+                <button onclick="closeKeyModal()"
+                    class="absolute top-4 right-4 bg-gray-200 text-gray-800 rounded-full w-8 h-8 font-bold flex items-center justify-center hover:bg-gray-300 z-10">&times;</button>
+                <h3 class="font-bold text-2xl mb-2" id="key-modal-title">Answer Key Details</h3>
+                <p id="key-modal-meta" class="text-gray-500 mb-6 font-medium"></p>
+                <div class="flex-1 overflow-auto bg-gray-50 border rounded p-4">
+                    <div id="key-modal-grid" class="grid grid-cols-5 gap-4 text-center">
+                        <!-- Answers populated via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "http://localhost:5002/api";
+        // auto-fill the options and choices when switching between question and info types
+        function applyBoxTypeDefaults(type) {
+            if (type === 'questions') {
+                document.getElementById('box-opts').value = 4;
+                document.getElementById('box-seq').value = 'A,B,C,D';
+                document.getElementById('label-box-items').innerText = 'no of quesition';
+                document.getElementById('label-box-start').innerText = 'Start Question ID';
+                document.getElementById('box-start').value = '1';
+                document.getElementById('label-box-dir').innerText = 'Question Direction';
+            } else if (type === 'info') {
+                document.getElementById('box-opts').value = 10;
+                document.getElementById('box-seq').value = '0,1,2,3,4,5,6,7,8,9';
+                document.getElementById('label-box-items').innerText = 'no of items';
+                document.getElementById('label-box-start').innerText = 'Data Tag (Name, Roll No, etc)';
+                document.getElementById('box-start').value = 'UDISE Code';
+                document.getElementById('label-box-dir').innerText = 'Item Direction';
+            }
+        }
+
+        let activeBlueprintZones = [];
+        let isZoomEnabled = true;
+
+        // tab switching logic
+        function switchTab(tabId) {
+            document.querySelectorAll('main > section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(tabId).classList.remove('hidden');
+
+            document.querySelectorAll('aside nav button').forEach(el => {
+                el.className = "w-full text-left px-6 py-3 font-medium hover:bg-gray-50 border-l-4 border-transparent text-gray-600";
+            });
+            const activeNavButtonBtn = document.getElementById(tabId.replace('tab-', 'nav-'));
+            activeNavButtonBtn.className = "w-full text-left px-6 py-3 font-medium hover:bg-gray-50 border-l-4 border-blue-500 bg-blue-50 text-blue-700";
+
+            if (tabId === 'tab-setup') {
+                loadTemplateList();
+                loadTemplateManagerList();
+            }
+            if (tabId === 'tab-upload') {
+                loadTemplateListForKeys();
+                loadKeysListManager();
+            }
+            if (tabId === 'tab-grade') loadKeysList();
+            if (tabId === 'tab-results') loadResultsTable();
+        }
+
+        // load everything when page starts up
+        document.addEventListener("DOMContentLoaded", () => {
+            loadTemplateList();
+            loadTemplateManagerList();
+            bindCropperEvents();
+            bindSettingsEvents();
+        });
+
+        function bindSettingsEvents() {
+            const inputs = ['box-dir', 'box-items', 'box-opts', 'box-seq', 'box-start'];
+            inputs.forEach(id => {
+                document.getElementById(id).addEventListener('input', () => {
+                    if (hasBox) drawAllDashedBoxes();
+                });
+            });
+            document.querySelectorAll('input[name="boxType"]').forEach(el => {
+                el.addEventListener('change', () => {
+                    if (hasBox) drawAllDashedBoxes();
+                });
+            });
+        }
+
+        async function loadTemplateList() {
+            try {
+                const res = await fetch(`${API_URL}/templates`);
+                const data = await res.json();
+                populateSelect('template-list', data.blueprints);
+                return data.blueprints;
+            } catch (e) {
+                console.error("Failed to load templates", e);
+                return [];
+            }
+        }
+
+        async function loadTemplateManagerList() {
+            const tbody = document.getElementById('manager-template-body');
+            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">Loading templates...</td></tr>';
+
+            const blueprints = await loadTemplateList();
+            tbody.innerHTML = "";
+
+            if (!blueprints || blueprints.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500 italic">No templates found.</td></tr>';
+                return;
+            }
+
+            blueprints.forEach(bp => {
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 border-b";
+                let isDefault = bp.is_default ? '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded">Default</span>' : `<button onclick="setTemplateDefault('${bp.name}')" class="text-green-600 hover:text-green-800 underline text-xs">Set Default</button>`;
+
+                tr.innerHTML = `
+                    <td class="p-3 font-medium">${bp.name}</td>
+                    <td class="p-3">${isDefault}</td>
+                    <td class="p-3 text-center">${bp.zones ? bp.zones.length : 0} Zones</td>
+                    <td class="p-3 text-center">
+                        <button onclick="editTemplateFromManager('${bp.name}')" class="text-blue-600 hover:text-blue-800 underline text-sm mr-4">Edit</button>
+                        <button onclick="deleteTemplate('${bp.name}')" class="text-red-600 hover:text-red-800 underline text-sm">Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function setTemplateDefault(name) {
+            try {
+                const res = await fetch(`${API_URL}/templates/${name}/set_default`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    loadTemplateManagerList();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                alert('Network error.');
+            }
+        }
+
+        let editingTemplateName = null; // tracks the original name being edited
+
+        function editTemplateFromManager(name) {
+            // Switch the dropdown to "Edit Existing"
+            document.getElementById('template-action').value = 'edit';
+            toggleTemplateAction();
+            // Pre-select the template in the dropdown
+            document.getElementById('template-list').value = name;
+            // Load the template data & image
+            loadTemplate();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        async function deleteTemplate(name) {
+            if (!confirm(`Are you sure you want to delete the template "${name}"?\nThis cannot be undone.`)) return;
+
+            try {
+                const res = await fetch(`${API_URL}/templates/${name}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`Template deleted successfully.`);
+                    loadTemplateManagerList();
+                    loadTemplateListForKeys(); // Update tab 2 dropdown
+                } else {
+                    alert('Error deleting template: ' + data.error);
+                }
+            } catch (e) {
+                alert('Network error while deleting template.');
+            }
+        }
+
+        async function loadTemplateListForKeys() {
+            try {
+                const res = await fetch(`${API_URL}/templates`);
+                const data = await res.json();
+                populateSelect('upload-template-list', data.blueprints);
+            } catch (e) { }
+        }
+
+        async function loadKeysList() {
+            try {
+                const res = await fetch(`${API_URL}/keys`);
+                const data = await res.json();
+                const select = document.getElementById('grade-key-list');
+                select.innerHTML = '';
+                data.keys.forEach(k => {
+                    let opt = document.createElement('option');
+                    opt.value = k.eval_id;
+
+                    let subject = k.subject_name || k.eval_id;
+                    let date = k.exam_date ? ` - ${k.exam_date}` : '';
+                    let qCount = k.answers ? Object.keys(k.answers).length : 0;
+
+                    opt.text = `${subject}${date} (${qCount} Qs) [ID: ${k.eval_id}]`;
+                    select.appendChild(opt);
+                });
+            } catch (e) { }
+        }
+
+        function populateSelect(id, list) {
+            const select = document.getElementById(id);
+            select.innerHTML = '';
+            if (list && list.length > 0) {
+                list.forEach(item => {
+                    let opt = document.createElement('option');
+                    opt.value = item.name;
+                    opt.text = item.name;
+                    select.appendChild(opt);
+                });
+            }
+        }
+
+        function toggleTemplateAction() {
+            const val = document.getElementById('template-action').value;
+            document.getElementById('edit-template-section').style.display = (val === 'edit') ? 'block' : 'none';
+            if (val === 'new') {
+                document.getElementById('template-name').value = "Untitled_Template";
+                activeBlueprintZones = [];
+                renderZoneList();
+                clearCropper();
+            }
+        }
+
+        // api calls for processing images
+        async function requestAnchorParsing(file, callback) {
+            let fd = new FormData();
+            fd.append("file", file);
+            try {
+                const res = await fetch(`${API_URL}/locate_anchors`, {
+                    method: "POST",
+                    body: fd
+                });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const objUrl = URL.createObjectURL(blob);
+                    callback(objUrl);
+                } else {
+                    alert("Failed to locate anchors. Proceeding with unaligned image.");
+                    const blob = await res.blob();
+                    callback(URL.createObjectURL(blob));
+                }
+            } catch (e) {
+                console.error(e);
+                alert("API connection failed.");
+            }
+        }
+
+        document.getElementById('blank-sheet-upload').addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                document.getElementById('process-anchor-btn').classList.remove('hidden');
+            }
+        });
+
+        function processAnchors() {
+            const file = document.getElementById('blank-sheet-upload').files[0];
+            if (!file) return;
+            requestAnchorParsing(file, (url) => {
+                initImage(url);
+                document.getElementById('cropper-section').classList.remove('hidden');
+            });
+        }
+
+        /* ----------------------------------------------------- */
+        /* CROPPER / CANVAS LOGIC (Ported from index.html)       */
+        /* ----------------------------------------------------- */
+        let container = document.getElementById("cropper-container");
+        let img = document.getElementById("image-view");
+        let selectionbox = document.getElementById("selection");
+        let lens = document.getElementById("lens");
+        let canvas = document.getElementById("overlayCanvas");
+        let ctx = canvas.getContext("2d");
+
+        let isDragging = false, isDraggingBox = false, isResizing = false;
+        let resizeHandle = "";
+        let startX, startY;
+        let box = { x: 0, y: 0, w: 0, h: 0 };
+        let hasBox = false;
+
+        // Bubble properties extracted from UI
+        function getProps() {
+            const type = document.querySelector('input[name="boxType"]:checked').value;
+            const dir = document.getElementById('box-dir').value;
+            const items = parseInt(document.getElementById('box-items').value);
+            const opts = parseInt(document.getElementById('box-opts').value);
+            const seq = document.getElementById('box-seq').value.split(',').map(s => s.trim());
+            const start = document.getElementById('box-start').value;
+            return {
+                z_items: items, z_opts: opts, z_dir: dir, ox: 0, oy: 0, rad_size: 10
+            };
+        }
+
+        function initImage(src) {
+            img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                drawAllDashedBoxes();
+            };
+            img.src = src;
+        }
+
+        function clearCropper() {
+            if (ctx) { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+            hasBox = false;
+            selectionbox.style.display = "none";
+            lens.style.display = "none";
+        }
+
+        function drawAllDashedBoxes() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = "rgba(255, 255, 0, 0.8)";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            activeBlueprintZones.forEach(z => {
+                ctx.strokeRect(z.x, z.y, z.width, z.height);
+            });
+            ctx.setLineDash([]);
+
+            if (hasBox && box.w > 0 && box.h > 0) {
+                drawPersistentBubbles();
+            }
+        }
+
+        function bindCropperEvents() {
+            document.querySelectorAll('.handle').forEach(h => {
+                h.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    isResizing = true;
+                    resizeHandle = e.target.id;
+                    let pos = getMousePos(e);
+                    startX = pos.x;
+                    startY = pos.y;
+                    if (isZoomEnabled) {
+                        lens.style.display = "block";
+                        renderLensView(pos.x, pos.y);
+                    }
+                });
+            });
+
+            selectionbox.addEventListener("mousedown", (e) => {
+                if (isResizing) return;
+                e.stopPropagation();
+                isDraggingBox = true;
+                let pos = getMousePos(e);
+                startX = pos.x;
+                startY = pos.y;
+                if (isZoomEnabled) {
+                    lens.style.display = "block";
+                    renderLensView(pos.x, pos.y);
+                }
+            });
+
+            container.addEventListener("mousedown", (e) => {
+                if (e.target !== img && e.target !== container) return;
+                // just record where the click started, don't clear the box yet
+                let pos = getMousePos(e);
+                startX = pos.x;
+                startY = pos.y;
+                isDragging = true;
+                dragStartedNewBox = false;
+                if (isZoomEnabled) {
+                    lens.style.display = "block";
+                    renderLensView(pos.x, pos.y);
+                }
+            });
+
+            // this flag tracks if we actually started drawing a new box or just clicked
+            let dragStartedNewBox = false;
+
+            window.addEventListener("mousemove", (e) => {
+                let pos = getMousePos(e);
+
+                if (isDragging) {
+                    // only start a new box if user drags far enough (not just a click)
+                    let dist = Math.sqrt((pos.x - startX) ** 2 + (pos.y - startY) ** 2);
+                    if (!dragStartedNewBox && dist > 5) {
+                        // now we know they are actually dragging, so start a new box
+                        dragStartedNewBox = true;
+                        hasBox = true;
+                        box = { x: startX, y: startY, w: 0, h: 0 };
+                    }
+                    if (dragStartedNewBox) {
+                        box.x = Math.min(startX, pos.x);
+                        box.y = Math.min(startY, pos.y);
+                        box.w = Math.abs(pos.x - startX);
+                        box.h = Math.abs(pos.y - startY);
+                        updateVisualBox();
+                    }
+                    if (isZoomEnabled) renderLensView(pos.x, pos.y);
+                }
+                else if (isDraggingBox) {
+                    let dx = pos.x - startX;
+                    let dy = pos.y - startY;
+                    box.x += dx;
+                    box.y += dy;
+                    startX = pos.x;
+                    startY = pos.y;
+                    updateVisualBox();
+                    if (isZoomEnabled) renderLensView(pos.x, pos.y);
+                }
+                else if (isResizing) {
+                    if (resizeHandle === "h-se") {
+                        box.w = pos.x - box.x;
+                        box.h = pos.y - box.y;
+                    } else if (resizeHandle === "h-sw") {
+                        box.w = (box.x + box.w) - pos.x;
+                        box.h = pos.y - box.y;
+                        box.x = pos.x;
+                    } else if (resizeHandle === "h-ne") {
+                        box.w = pos.x - box.x;
+                        box.h = (box.y + box.h) - pos.y;
+                        box.y = pos.y;
+                    } else if (resizeHandle === "h-nw") {
+                        box.w = (box.x + box.w) - pos.x;
+                        box.h = (box.y + box.h) - pos.y;
+                        box.x = pos.x;
+                        box.y = pos.y;
+                    }
+                    updateVisualBox();
+                    if (isZoomEnabled) renderLensView(pos.x, pos.y);
+                }
+            });
+
+            window.addEventListener("mouseup", (e) => {
+                if (isDragging || isDraggingBox || isResizing) {
+                    isDragging = false;
+                    isDraggingBox = false;
+                    isResizing = false;
+                    lens.style.display = "none";
+                    drawAllDashedBoxes();
+                }
+            });
+        }
+
+        function getMousePos(evt) {
+            let rect = img.getBoundingClientRect();
+            let x = evt.clientX - rect.left;
+            let y = evt.clientY - rect.top;
+            return {
+                x: Math.max(0, Math.min(x, img.width)),
+                y: Math.max(0, Math.min(y, img.height))
+            };
+        }
+
+        function updateVisualBox() {
+            selectionbox.style.left = box.x + "px";
+            selectionbox.style.top = box.y + "px";
+            selectionbox.style.width = box.w + "px";
+            selectionbox.style.height = box.h + "px";
+            selectionbox.style.display = "block";
+            drawAllDashedBoxes();
+        }
+
+        function toggleZoom() {
+            isZoomEnabled = !isZoomEnabled;
+            const btn = document.getElementById("toggleZoomBtn");
+            btn.innerText = "Zoom Preview: " + (isZoomEnabled ? "ON" : "OFF");
+            if (!isZoomEnabled) lens.style.display = "none";
+        }
+
+        const COLORS = [
+            "rgba(255, 0, 0, 0.5)", "rgba(0, 255, 0, 0.5)", "rgba(0, 0, 255, 0.5)",
+            "rgba(255, 255, 0, 0.5)", "rgba(255, 0, 255, 0.5)", "rgba(0, 255, 255, 0.5)",
+            "rgba(255, 128, 0, 0.5)", "rgba(128, 0, 255, 0.5)", "rgba(255, 105, 180, 0.5)"
+        ];
+
+        function drawPersistentBubbles() {
+            if (!hasBox || box.w <= 0 || box.h <= 0) return;
+            let p = getProps();
+
+            for (let i = 0; i < p.z_items; i++) {
+                let vx, vy;
+                for (let j = 0; j < p.z_opts; j++) {
+                    if (p.z_dir === 'vertical') {
+                        vx = box.x + (box.w / (p.z_opts * 2)) * (2 * j + 1) + p.ox;
+                        vy = box.y + (box.h / (p.z_items * 2)) * (2 * i + 1) + p.oy;
+                    } else {
+                        vx = box.x + (box.w / (p.z_items * 2)) * (2 * i + 1) + p.ox;
+                        vy = box.y + (box.h / (p.z_opts * 2)) * (2 * j + 1) + p.oy;
+                    }
+                    ctx.beginPath();
+                    ctx.arc(vx, vy, p.rad_size, 0, Math.PI * 2);
+                    ctx.fillStyle = COLORS[i % COLORS.length];
+                    ctx.fill();
+                }
+            }
+        }
+
+        function renderLensView(mouseX, mouseY) {
+            let zoomRatio = 1.8;
+            let lens_w = 150;
+
+            let lensCanvas = document.getElementById('lensCanvas');
+            let lctx = lensCanvas.getContext('2d');
+            lctx.clearRect(0, 0, lens_w, lens_w);
+
+            // Calculate the zoomed source region
+            let srcW = lens_w / zoomRatio;
+            let srcH = lens_w / zoomRatio;
+            let centerX = mouseX;
+            let centerY = mouseY;
+
+            // if we have a blue box, align the zoom so the nearest corner of the
+            // blue box sits at the matching corner of the zoom square with a little
+            // padding so the blue line is visible
+            if (hasBox && box.w > 0 && box.h > 0) {
+                let pad = 5; // small padding in source-image pixels so we can see the blue line
+                let boxCx = box.x + box.w / 2;
+                let boxCy = box.y + box.h / 2;
+
+                // pick which corner the mouse is closest to
+                let nearLeft = (mouseX <= boxCx);
+                let nearTop = (mouseY <= boxCy);
+
+                // position the source so that corner appears at the zoom edge with padding
+                if (nearLeft) {
+                    centerX = (box.x - pad) + srcW / 2;
+                } else {
+                    centerX = (box.x + box.w + pad) - srcW / 2;
+                }
+                if (nearTop) {
+                    centerY = (box.y - pad) + srcH / 2;
+                } else {
+                    centerY = (box.y + box.h + pad) - srcH / 2;
+                }
+            }
+
+            let srcX = centerX - srcW / 2;
+            let srcY = centerY - srcH / 2;
+
+            // clamp source region so zoom always fills the full square
+            let imgW = img.naturalWidth || img.width;
+            let imgH = img.naturalHeight || img.height;
+            if (srcX < 0) srcX = 0;
+            if (srcY < 0) srcY = 0;
+            if (srcX + srcW > imgW) srcX = imgW - srcW;
+            if (srcY + srcH > imgH) srcY = imgH - srcH;
+
+            // Draw the base image zoomed
+            lctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, lens_w, lens_w);
+
+            // Draw the overlay canvas zoomed (dashed boxes from saved zones)
+            lctx.drawImage(canvas, srcX, srcY, srcW, srcH, 0, 0, lens_w, lens_w);
+
+            // Draw the current active selection box in zoomed space
+            if (hasBox && box.w > 0 && box.h > 0) {
+                let bx = (box.x - srcX) * zoomRatio;
+                let by = (box.y - srcY) * zoomRatio;
+                let bw = box.w * zoomRatio;
+                let bh = box.h * zoomRatio;
+
+                lctx.strokeStyle = '#00AAFF';
+                lctx.lineWidth = 2;
+                lctx.setLineDash([5, 5]);
+                lctx.strokeRect(bx, by, bw, bh);
+                lctx.setLineDash([]);
+                lctx.fillStyle = 'rgba(0, 170, 255, 0.15)';
+                lctx.fillRect(bx, by, bw, bh);
+
+                // Draw colorful bubbles inside the active box (zoomed)
+                let p = getProps();
+                for (let i = 0; i < p.z_items; i++) {
+                    for (let j = 0; j < p.z_opts; j++) {
+                        let orig_vx, orig_vy;
+                        if (p.z_dir === 'vertical') {
+                            orig_vx = box.x + (box.w / (p.z_opts * 2)) * (2 * j + 1) + p.ox;
+                            orig_vy = box.y + (box.h / (p.z_items * 2)) * (2 * i + 1) + p.oy;
+                        } else {
+                            orig_vx = box.x + (box.w / (p.z_items * 2)) * (2 * i + 1) + p.ox;
+                            orig_vy = box.y + (box.h / (p.z_opts * 2)) * (2 * j + 1) + p.oy;
+                        }
+
+                        let zoom_vx = (orig_vx - srcX) * zoomRatio;
+                        let zoom_vy = (orig_vy - srcY) * zoomRatio;
+                        let zoom_rad = p.rad_size * zoomRatio;
+
+                        let q_color = COLORS[i % COLORS.length].replace('0.5)', '0.8)');
+
+                        lctx.beginPath();
+                        lctx.arc(zoom_vx, zoom_vy, zoom_rad, 0, Math.PI * 2);
+                        lctx.strokeStyle = q_color;
+                        lctx.lineWidth = 2;
+                        lctx.stroke();
+                        lctx.fillStyle = q_color.replace('0.8)', '0.35)');
+                        lctx.fill();
+
+                        lctx.beginPath();
+                        lctx.arc(zoom_vx, zoom_vy, 2, 0, Math.PI * 2);
+                        lctx.fillStyle = 'white';
+                        lctx.fill();
+                    }
+                }
+            }
+
+            // position the lens near the blue box edge with some padding
+            // figure out which side of the mouse has more space and put the lens there
+            let containerRect = document.getElementById('cropper-container').getBoundingClientRect();
+            let containerW = containerRect.width;
+            let containerH = containerRect.height;
+            let lensSize = 150 + 6; // lens width + border
+            let pad = 15; // padding from the mouse
+
+            let lx, ly;
+
+            // put the lens on the side of the blue box that has more room
+            if (hasBox && box.w > 0) {
+                // if the mouse is on the left half, put lens on the right side of box
+                if (mouseX < containerW / 2) {
+                    lx = box.x + box.w + pad;
+                } else {
+                    lx = box.x - lensSize - pad;
+                }
+                // vertically align with the mouse, but keep within bounds
+                ly = mouseY - lensSize / 2;
+            } else {
+                // no box drawn yet, put near the mouse
+                lx = mouseX + pad;
+                ly = mouseY - lensSize / 2;
+            }
+
+            // keep the lens inside the container
+            if (lx < 0) lx = pad;
+            if (lx + lensSize > containerW) lx = containerW - lensSize - pad;
+            if (ly < 0) ly = pad;
+            if (ly + lensSize > containerH) ly = containerH - lensSize - pad;
+
+            lens.style.left = lx + "px";
+            lens.style.top = ly + "px";
+        }
+
+        // saving and managing template zones
+        function commitZone() {
+            if (!hasBox || box.w === 0) return alert("Please draw a box first.");
+            const type = document.querySelector('input[name="boxType"]:checked').value;
+            const dir = document.getElementById('box-dir').value;
+            const items = parseInt(document.getElementById('box-items').value);
+            const opts = parseInt(document.getElementById('box-opts').value);
+            const seq = document.getElementById('box-seq').value.split(',').map(s => s.trim());
+            const start = document.getElementById('box-start').value;
+
+            const newZone = {
+                "id": editingZoneIndex >= 0 ? activeBlueprintZones[editingZoneIndex].id : `zone_${activeBlueprintZones.length}`,
+                type: type,
+                direction: dir,
+                num_items: items,
+                num_options: opts,
+                options_list: seq,
+                start_q: type === 'questions' ? parseInt(start) : 0,
+                info_label: type === 'info' ? start : "",
+                x: box.x, y: box.y, width: box.w, height: box.h,
+                offset_x: 0, offset_y: 0, bubble_radius: 10
+            };
+
+            if (editingZoneIndex >= 0) {
+                // Replace existing zone
+                activeBlueprintZones[editingZoneIndex] = newZone;
+                editingZoneIndex = -1;
+                document.getElementById('edit-zone-hint').classList.add('hidden');
+            } else {
+                activeBlueprintZones.push(newZone);
+            }
+
+            clearCropper();
+            drawAllDashedBoxes();
+            renderZoneList();
+        }
+
+        let editingZoneIndex = -1; // Index of zone being re-calibrated
+
+        function renderZoneList() {
+            const d = document.getElementById('zone-list-display');
+            if (activeBlueprintZones.length === 0) {
+                d.innerHTML = `<p class="text-gray-400 italic">No boxes saved yet.</p>`;
+                updateSaveButtonLabel();
+                return;
+            }
+            let html = `<ul class="list-none space-y-2">`;
+            activeBlueprintZones.forEach((z, index) => {
+                let label = '';
+                let typeBadge = '';
+                if (z.type === 'questions') {
+                    let startQ = parseInt(z.start_q) || 1;
+                    let endQ = startQ + (parseInt(z.num_items) || 1) - 1;
+                    label = `Q${startQ} – Q${endQ}`;
+                    typeBadge = `<span class="bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded">Questions</span>`;
+                } else {
+                    label = z.info_label || 'Info Field';
+                    typeBadge = `<span class="bg-purple-100 text-purple-800 text-xs font-semibold px-2 py-0.5 rounded">Info</span>`;
+                }
+                let isEditing = (editingZoneIndex === index);
+                let editingClass = isEditing ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50';
+                html += `
+                <li class="flex items-center justify-between ${editingClass} border p-2 rounded">
+                    <div class="flex items-center gap-2">
+                        ${typeBadge}
+                        <span class="font-semibold">${label}</span>
+                        <span class="text-xs text-gray-400">(${z.num_items}×${z.num_options} ${z.direction})</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="selectZoneForEdit(${index})" class="text-blue-500 hover:text-blue-700 focus:outline-none" title="Select & Re-draw this zone">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                        </button>
+                        <button onclick="removeZone(${index})" class="text-red-500 hover:text-red-700 focus:outline-none" title="Remove Box">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                </li>`;
+            });
+            html += `</ul>`;
+            d.innerHTML = html;
+            updateSaveButtonLabel();
+        }
+
+        function updateSaveButtonLabel() {
+            const btn = document.getElementById('save-template-btn');
+            if (editingTemplateName) {
+                btn.innerText = 'Update Template';
+                btn.className = 'bg-green-600 text-white px-6 py-2 rounded font-medium shadow hover:bg-green-700';
+            } else {
+                btn.innerText = 'Save Complete Template';
+                btn.className = 'bg-blue-600 text-white px-6 py-2 rounded font-medium shadow hover:bg-blue-700';
+            }
+        }
+
+        function selectZoneForEdit(index) {
+            editingZoneIndex = index;
+            let z = activeBlueprintZones[index];
+            let label = z.type === 'questions' ? `Q${z.start_q}–Q${parseInt(z.start_q) + z.num_items - 1}` : (z.info_label || 'Info');
+
+            document.getElementById('edit-zone-hint').classList.remove('hidden');
+            document.getElementById('edit-zone-name').innerText = `${label} (${z.id})`;
+
+            // Pre-fill form fields from the zone data
+            document.querySelector(`input[name="boxType"][value="${z.type}"]`).checked = true;
+            document.getElementById('box-dir').value = z.direction;
+            document.getElementById('box-items').value = z.num_items;
+            document.getElementById('box-opts').value = z.num_options;
+            document.getElementById('box-seq').value = (z.options_list || []).join(',');
+            document.getElementById('box-start').value = z.start_q || z.info_label || '';
+
+            // Highlight this zone on the canvas with blue box + colorful bubbles
+            drawAllDashedBoxes();
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0, 170, 255, 0.9)';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([]);
+            ctx.strokeRect(z.x, z.y, z.width, z.height);
+            ctx.fillStyle = 'rgba(0, 170, 255, 0.1)';
+            ctx.fillRect(z.x, z.y, z.width, z.height);
+            ctx.restore();
+
+            // Draw colorful bubble circles for this zone
+            let rad = z.bubble_radius || 10;
+            for (let i = 0; i < z.num_items; i++) {
+                for (let j = 0; j < z.num_options; j++) {
+                    let vx, vy;
+                    if (z.direction === 'vertical') {
+                        vx = z.x + (z.width / (z.num_options * 2)) * (2 * j + 1);
+                        vy = z.y + (z.height / (z.num_items * 2)) * (2 * i + 1);
+                    } else {
+                        vx = z.x + (z.width / (z.num_items * 2)) * (2 * i + 1);
+                        vy = z.y + (z.height / (z.num_options * 2)) * (2 * j + 1);
+                    }
+                    ctx.beginPath();
+                    ctx.arc(vx, vy, rad, 0, Math.PI * 2);
+                    ctx.strokeStyle = COLORS[i % COLORS.length].replace('0.5)', '0.9)');
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = COLORS[i % COLORS.length];
+                    ctx.fill();
+
+                    // White center dot
+                    ctx.beginPath();
+                    ctx.arc(vx, vy, 2, 0, Math.PI * 2);
+                    ctx.fillStyle = 'white';
+                    ctx.fill();
+                }
+            }
+
+            renderZoneList();
+        }
+
+        function cancelZoneEdit() {
+            editingZoneIndex = -1;
+            document.getElementById('edit-zone-hint').classList.add('hidden');
+            drawAllDashedBoxes();
+            renderZoneList();
+        }
+
+        function removeZone(index) {
+            if (editingZoneIndex === index) cancelZoneEdit();
+            activeBlueprintZones.splice(index, 1);
+            if (editingZoneIndex > index) editingZoneIndex--;
+            renderZoneList();
+            drawAllDashedBoxes();
+        }
+
+        function clearZones() {
+            editingZoneIndex = -1;
+            document.getElementById('edit-zone-hint').classList.add('hidden');
+            activeBlueprintZones = [];
+            renderZoneList();
+            drawAllDashedBoxes();
+        }
+
+        async function loadTemplate() {
+            const name = document.getElementById('template-list').value;
+            if (!name) return;
+
+            const res = await fetch(`${API_URL}/templates`);
+            const data = await res.json();
+            const bp = data.blueprints.find(b => b.name === name);
+            if (bp) {
+                activeBlueprintZones = bp.zones || [];
+                editingTemplateName = bp.name;
+                document.getElementById('template-name').value = bp.name;
+                document.getElementById('template-default').checked = bp.is_default;
+                renderZoneList();
+
+                // Try loading the saved template image
+                try {
+                    const imgRes = await fetch(`${API_URL}/templates/${name}/image`);
+                    if (imgRes.ok) {
+                        const blob = await imgRes.blob();
+                        const objUrl = URL.createObjectURL(blob);
+                        document.getElementById('cropper-section').classList.remove('hidden');
+                        initImage(objUrl);
+                    } else {
+                        // No image saved — prompt user to upload one
+                        alert(`Template "${name}" loaded (${activeBlueprintZones.length} zones). No saved sheet image found — upload a blank sheet to visualize the zones.`);
+                    }
+                } catch (e) {
+                    alert(`Template "${name}" loaded (${activeBlueprintZones.length} zones). Upload a blank sheet to visualize.`);
+                }
+            }
+        }
+
+        async function saveTemplate() {
+            const name = document.getElementById('template-name').value;
+            const isDef = document.getElementById('template-default').checked;
+            if (!name) return alert("Provide a template name.");
+            if (activeBlueprintZones.length === 0) return alert("Add at least one box.");
+
+            const payload = {
+                name: name,
+                is_default: isDef,
+                zones: activeBlueprintZones
+            };
+
+            const res = await fetch(`${API_URL}/templates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const out = await res.json();
+            if (out.success) {
+                // Also save the current sheet image if one is loaded
+                const imgEl = document.getElementById('image-view');
+                if (imgEl && imgEl.src && imgEl.src !== window.location.href) {
+                    try {
+                        const imgBlob = await fetch(imgEl.src).then(r => r.blob());
+                        const fd = new FormData();
+                        fd.append('file', imgBlob, 'template.jpg');
+                        await fetch(`${API_URL}/templates/${name}/image`, { method: 'POST', body: fd });
+                    } catch (e) {
+                        console.warn('Could not save template image:', e);
+                    }
+                }
+                alert(out.message);
+                editingTemplateName = null;
+                loadTemplateManagerList();
+                loadTemplateListForKeys();
+            }
+        }
+
+        // answer key stuff
+        let lastKeyFile = null;
+        let lastKeyBlueprint = null;
+        let lastKeyEval = null;
+        let lastKeySubject = null;
+        let lastKeyDate = null;
+        let lastKeyPassingMarks = 0;
+
+        async function processAnswerKey() {
+            lastKeyFile = document.getElementById('answer-sheet-upload').files[0];
+            lastKeyBlueprint = document.getElementById('upload-template-list').value;
+            lastKeySubject = document.getElementById('upload-subject-name').value;
+            lastKeyDate = document.getElementById('upload-exam-date').value;
+            lastKeyPassingMarks = parseInt(document.getElementById('upload-passing-marks').value) || 0;
+
+            // Auto-generate ID based on Subject + Date + Random 4-digit code
+            const cleanSub = lastKeySubject.replace(/[^a-zA-Z0-9]/g, '_') || "Key";
+            const dateStr = lastKeyDate || "NoDate";
+            const randSuffix = Math.floor(1000 + Math.random() * 9000);
+            lastKeyEval = `${cleanSub}_${dateStr}_${randSuffix}`;
+
+            if (!lastKeyFile) return alert("Upload a file first.");
+
+            document.getElementById('ak-status').innerText = "Scanning Answer Key...";
+            document.getElementById('ak-status').className = "mt-4 p-4 rounded bg-blue-50 text-blue-700 block";
+            document.getElementById('ak-preview-section').classList.add('hidden');
+
+            let fd = new FormData();
+            fd.append("file", lastKeyFile);
+            fd.append("eval_id", lastKeyEval);
+            fd.append("blueprint", lastKeyBlueprint);
+
+            try {
+                const res = await fetch(`${API_URL}/keys/scan`, { method: "POST", body: fd });
+                const data = await res.json();
+
+                if (res.ok) {
+                    document.getElementById('ak-status').innerText = "Scan Complete. Please review the results below before saving.";
+                    document.getElementById('ak-status').className = "mt-4 p-4 rounded bg-green-50 text-green-700 block";
+
+                    // Show Scanned Image
+                    document.getElementById('ak-preview-image').src = "data:image/jpeg;base64," + data.image_b64;
+
+                    // Populate Input Grid
+                    const inputContainer = document.getElementById('ak-preview-inputs');
+                    inputContainer.innerHTML = "";
+
+                    // Sort numerically if possible
+                    const sortedQuestions = Object.keys(data.answers).sort((a, b) => parseInt(a) - parseInt(b));
+
+                    sortedQuestions.forEach(q => {
+                        let ans = data.answers[q];
+                        let isBlank = (ans === "-");
+
+                        let d = document.createElement('div');
+                        d.className = "flex items-center gap-2";
+
+                        let colorClass = isBlank ? "border-red-500 bg-red-50 text-red-700 focus:ring-red-500" : "border-gray-300 focus:ring-blue-500";
+
+                        d.innerHTML = `
+                            <label class="font-bold text-gray-700 w-8">Q${q}</label>
+                            <input type="text" id="final_ak_${q}" class="border w-full p-2 rounded text-center font-medium ${colorClass} ak-final-input" data-qid="${q}" value="${ans !== '-' ? ans : ''}" placeholder="${isBlank ? 'Blank' : ''}">
+                        `;
+                        inputContainer.appendChild(d);
+                    });
+
+                    document.getElementById('ak-preview-section').classList.remove('hidden');
+                } else {
+                    document.getElementById('ak-status').innerText = "Error: " + data.error;
+                    document.getElementById('ak-status').className = "mt-4 p-4 rounded bg-red-50 text-red-700 block";
+                }
+            } catch (e) {
+                alert("API connection failed.");
+            }
+        }
+
+        async function saveFinalAnswerKey() {
+            let finalAnswers = {};
+            let missingInputs = false;
+
+            document.querySelectorAll('.ak-final-input').forEach(inp => {
+                let val = inp.value.trim();
+                let qid = inp.getAttribute('data-qid');
+                if (val === '') {
+                    missingInputs = true;
+                    inp.classList.add('border-red-500', 'bg-red-50');
+                } else {
+                    inp.classList.remove('border-red-500', 'bg-red-50');
+                    finalAnswers[qid] = val;
+                }
+            });
+
+            if (missingInputs) {
+                return alert("Please fill in all blank (-) answers before saving!");
+            }
+
+            const payload = {
+                eval_id: lastKeyEval,
+                blueprint: lastKeyBlueprint,
+                subject_name: lastKeySubject,
+                exam_date: lastKeyDate,
+                passing_marks: lastKeyPassingMarks,
+                answers: finalAnswers
+            };
+
+            const res = await fetch(`${API_URL}/keys/save`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                alert("Answer Key Saved Successfully!");
+                document.getElementById('ak-preview-section').classList.add('hidden');
+                document.getElementById('ak-status').className = "hidden";
+                loadKeysList(); // update the dropdown in grade tab too
+                loadKeysListManager(); // reload the manager table
+            } else {
+                alert("Failed to save. " + data.error);
+            }
+        }
+
+        let loadedKeysData = [];
+
+        async function loadKeysListManager() {
+            const tbody = document.getElementById('manager-keys-body');
+            tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500">Loading answer keys...</td></tr>';
+
+            try {
+                const res = await fetch(`${API_URL}/keys`);
+                const data = await res.json();
+                loadedKeysData = data.keys || [];
+
+                tbody.innerHTML = "";
+
+                if (!data.keys || data.keys.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-gray-500 italic">No answer keys found.</td></tr>';
+                    return;
+                }
+
+                data.keys.forEach(k => {
+                    let tr = document.createElement('tr');
+                    tr.className = "hover:bg-gray-50 border-b";
+
+                    let subjectStr = k.subject_name || '<span class="text-gray-400 italic">No Subject</span>';
+                    let dateStr = k.exam_date ? `<br><span class="text-xs text-blue-600">${k.exam_date}</span>` : '';
+                    let validCount = Object.keys(k.answers || {}).length;
+
+                    tr.innerHTML = `
+                        <td class="p-3 font-medium">${subjectStr}${dateStr}<br><span class="text-xs text-gray-400 font-normal">[ID: ${k.eval_id}]</span></td>
+                        <td class="p-3">${k.blueprint}</td>
+                        <td class="p-3 text-center">${validCount} Qs</td>
+                        <td class="p-3 text-center">
+                            <button onclick="viewAnswerKey('${k.eval_id}')" class="text-blue-600 hover:text-blue-800 underline text-sm mr-4">View</button>
+                            <button onclick="deleteAnswerKey('${k.eval_id}')" class="text-red-600 hover:text-red-800 underline text-sm">Delete</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-center text-red-500">Error loading keys.</td></tr>';
+            }
+        }
+
+        async function deleteAnswerKey(eval_id) {
+            if (!confirm(`Are you sure you want to delete Answer Key "${eval_id}"?\nThis cannot be undone.`)) return;
+
+            try {
+                const res = await fetch(`${API_URL}/keys/${eval_id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`Answer Key deleted successfully.`);
+                    loadKeysListManager();
+                    loadKeysList(); // update the dropdown
+                } else {
+                    alert('Error deleting key: ' + data.error);
+                }
+            } catch (e) {
+                alert('Network error while deleting Answer Key.');
+            }
+        }
+
+        function viewAnswerKey(eval_id) {
+            const key = loadedKeysData.find(k => k.eval_id === eval_id);
+            if (!key) return alert("Error finding key details.");
+
+            document.getElementById('key-modal-title').innerText = key.eval_id;
+
+            let subject = key.subject_name || "No Subject";
+            let date = key.exam_date || "No Date";
+            let pm = key.passing_marks || 0;
+
+            document.getElementById('key-modal-meta').innerText = `Subject: ${subject} | Date: ${date} | Passing Marks: ${pm} | Template: ${key.blueprint}`;
+
+            const grid = document.getElementById('key-modal-grid');
+            grid.innerHTML = "";
+
+            if (key.answers) {
+                const sortedQuestions = Object.keys(key.answers).sort((a, b) => parseInt(a) - parseInt(b));
+                sortedQuestions.forEach(q => {
+                    let ans = key.answers[q];
+                    let isBlank = (ans === "-");
+                    let colorClass = isBlank ? "text-red-600 bg-red-50 border-red-200" : "text-green-700 bg-green-50 border-green-200";
+                    let displayAns = isBlank ? "BLANK" : ans;
+
+                    grid.innerHTML += `
+                        <div class="border rounded p-2 flex flex-col items-center justify-center ${colorClass} shadow-sm">
+                            <span class="text-xs text-gray-500 font-bold mb-1">Q${q}</span>
+                            <span class="font-black text-lg">${displayAns}</span>
+                        </div>
+                    `;
+                });
+            } else {
+                grid.innerHTML = `<p class="col-span-5 text-gray-500">No answer data recorded.</p>`;
+            }
+
+            document.getElementById('key-modal').classList.remove('hidden');
+        }
+
+        function closeKeyModal() {
+            document.getElementById('key-modal').classList.add('hidden');
+        }
+
+        // grading papers section
+        // handles both single and batch grading
+        async function gradePaper() {
+            const files = document.getElementById('student-sheet-upload').files;
+            const eval_id = document.getElementById('grade-key-list').value;
+            const statusDiv = document.getElementById('grade-status');
+
+            if (files.length === 0) return alert("Select at least one student sheet.");
+
+            document.getElementById('bulk-grade-results').classList.add('hidden');
+            statusDiv.className = "mt-4 block p-4 rounded bg-blue-50 text-blue-700 font-medium";
+
+            let allResults = [];
+            let successCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                statusDiv.innerText = `Grading paper ${i + 1} of ${files.length}... (${file.name})`;
+
+                let fd = new FormData();
+                fd.append("file", file);
+                fd.append("eval_id", eval_id);
+
+                try {
+                    const res = await fetch(`${API_URL}/grade`, { method: "POST", body: fd });
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        successCount++;
+                        allResults.push(data);
+                    } else {
+                        console.error(`Error on file ${file.name}:`, data.error);
+                    }
+                } catch (e) {
+                    console.error(`Network error on file ${file.name}:`, e);
+                }
+            }
+
+            if (successCount === 0) {
+                statusDiv.innerText = "Error completing evaluation on all files. Check console.";
+                statusDiv.className = "mt-4 block p-4 rounded bg-red-50 text-red-700";
+            } else {
+                statusDiv.innerText = `Successfully Graded ${successCount}/${files.length} papers! Results saved to database.`;
+                statusDiv.className = "mt-4 block p-4 rounded bg-green-50 text-green-700 font-bold";
+                statusDiv.classList.remove('hidden');
+
+                if (allResults.length > 0) {
+                    renderBulkResults(allResults);
+                }
+            }
+        }
+
+        let currentBulkResults = [];
+
+        function renderBulkResults(resultsArray) {
+            currentBulkResults = resultsArray || [];
+            const container = document.getElementById('accordion-container');
+            container.innerHTML = "";
+
+            // Legend
+            container.innerHTML += `
+                <div class="flex items-center gap-6 text-sm font-medium mb-4 bg-white border p-3 rounded-lg shadow-sm">
+                    <span class="flex items-center gap-2"><div class="w-3 h-3 bg-green-500 rounded-full"></div> Pass</span>
+                    <span class="flex items-center gap-2"><div class="w-3 h-3 bg-red-500 rounded-full"></div> Fail</span>
+                    <span class="flex items-center gap-2"><div class="w-3 h-3 bg-yellow-400 rounded-full"></div> Incomplete (Blank Answers)</span>
+                </div>
+            `;
+
+            currentBulkResults.forEach((data, index) => {
+                let studentStr = "Unknown Student";
+                if (data.student_info && Object.keys(data.student_info).length > 0) {
+                    studentStr = Object.entries(data.student_info).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                }
+
+                let pct = Math.round((data.score / data.total) * 100);
+
+                let hasBlanks = data.report.some(r => r["Given Answer"] === "-");
+                let pm = data.passing_marks || 0;
+
+                let colorClass = "";
+                let bgClass = "bg-white";
+
+                if (hasBlanks) {
+                    colorClass = "text-yellow-600";
+                    bgClass = "bg-yellow-50";
+                } else if (data.score >= pm && pm > 0) {
+                    colorClass = "text-green-600";
+                    bgClass = "bg-green-50";
+                } else if (data.score < pm && pm > 0) {
+                    colorClass = "text-red-600";
+                    bgClass = "bg-red-50";
+                } else {
+                    colorClass = pct >= 70 ? "text-green-600" : (pct >= 50 ? "text-yellow-600" : "text-red-600");
+                }
+
+                let itemHTML = `
+                <div class="border border-gray-200 rounded-lg bg-white overflow-hidden shadow-sm" id="accordion-item-${data.id}">
+                    <button onclick="toggleAccordion('${data.id}')" class="w-full px-6 py-4 flex justify-between items-center ${bgClass} hover:brightness-95 transition-colors focus:outline-none">
+                        <div class="flex items-center gap-4">
+                            <span class="text-gray-500 font-mono text-sm">#${index + 1}</span>
+                            <span class="font-bold text-gray-800">${studentStr}</span>
+                        </div>
+                        <div class="flex items-center gap-6">
+                            <span class="font-black text-xl ${colorClass}" id="score-preview-${data.id}">${data.score} / ${data.total} <span class="text-sm font-bold opacity-75">(${pct}%)</span></span>
+                            <svg id="icon-${data.id}" class="w-5 h-5 text-gray-500 transform transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </button>
+                    
+                    <div id="content-${data.id}" class="hidden flex gap-6 p-6 border-t border-gray-200">
+                        <!-- Left: Image -->
+                        <div class="flex-1 bg-gray-100 rounded flex justify-center items-center overflow-hidden" style="max-height: 800px;">
+                            <img class="max-w-full max-h-full object-contain" src="data:image/jpeg;base64,${data.image_b64}" alt="Graded Paper">
+                        </div>
+                        
+                        <!-- Right: Student Info + Breakdown + Editing -->
+                        <div class="w-1/3 flex flex-col">
+                            <!-- edit button at the top -->
+                            <div class="flex justify-end mb-3">
+                                <button id="edit-btn-${data.id}" onclick="toggleEditMode('${data.id}')" class="text-sm bg-blue-100 text-blue-700 px-4 py-1.5 rounded hover:bg-blue-200 font-semibold focus:outline-none">Edit</button>
+                            </div>
+                            <!-- student info section -->
+                            <div class="mb-4 bg-gray-50 border rounded p-3">
+                                <h4 class="font-bold text-sm text-gray-600 mb-2">Student Info</h4>
+                                <div id="info-display-${data.id}">
+                                    ${generateStudentInfoHTML(data.student_info, data.id, false)}
+                                </div>
+                            </div>
+
+                            <h4 class="font-bold text-lg mb-4">Score Breakdown</h4>
+                            
+                            <div class="flex-1 overflow-y-auto border rounded bg-gray-50 p-2 max-h-[700px]">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b">
+                                            <th class="text-left p-1">Q</th>
+                                            <th class="p-1">Given</th>
+                                            <th class="p-1">Correct</th>
+                                            <th class="text-right p-1">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="table-body-${data.id}">
+                                        ${generateTableRowsHTML(data.report, data.id, false)}
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div id="save-section-${data.id}" class="hidden mt-4 pt-4 border-t border-gray-200 flex justify-end gap-2">
+                                <button onclick="cancelEditMode('${data.id}')" class="px-4 py-2 text-gray-600 hover:text-gray-800 font-medium rounded hover:bg-gray-100 focus:outline-none">Cancel</button>
+                                <button onclick="saveEditedResult('${data.id}')" class="px-4 py-2 bg-green-600 text-white font-bold rounded shadow hover:bg-green-700 focus:outline-none">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+                container.innerHTML += itemHTML;
+            });
+
+            document.getElementById('bulk-grade-results').classList.remove('hidden');
+        }
+
+        // generates the student info display - either read only or editable inputs
+        function generateStudentInfoHTML(studentInfo, id, isEditMode) {
+            if (!studentInfo || Object.keys(studentInfo).length === 0) {
+                if (isEditMode) {
+                    return `<div class="text-sm text-gray-500">No info detected. <br><input type="text" class="info-key-${id} border rounded px-2 py-1 w-20 text-sm mt-1" placeholder="Label" value="Roll No"> : <input type="text" class="info-val-${id} border rounded px-2 py-1 w-24 text-sm" data-key="Roll No" placeholder="Value"></div>`;
+                }
+                return `<p class="text-sm text-gray-400">No student info detected</p>`;
+            }
+            let html = '';
+            Object.entries(studentInfo).forEach(([key, val]) => {
+                if (isEditMode) {
+                    html += `<div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-semibold text-gray-500 w-24">${key}:</span>
+                        <input type="text" class="info-val-${id} border rounded px-2 py-1 text-sm flex-1" data-key="${key}" value="${val || ''}" placeholder="Enter value">
+                    </div>`;
+                } else {
+                    let displayVal = val || '--';
+                    let valClass = val ? 'text-gray-800' : 'text-red-400 italic';
+                    html += `<div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-semibold text-gray-500 w-24">${key}:</span>
+                        <span class="text-sm ${valClass}">${displayVal}</span>
+                    </div>`;
+                }
+            });
+            return html;
+        }
+
+        function generateTableRowsHTML(report, id, isEditMode) {
+            let html = "";
+            report.forEach(r => {
+                const isCorrect = r["Mark"] === 1;
+                const cssClass = isCorrect ? "text-green-600 bg-green-50" : "text-red-600 bg-red-50";
+                const statusText = isCorrect ? "Correct" : "Wrong";
+
+                let givenVal = r["Given Answer"] === "-" ? "" : r["Given Answer"];
+
+                let givenCell = "";
+                if (isEditMode) {
+                    givenCell = `<input type="text" class="edit-input-${id} border border-gray-300 rounded px-1 w-12 text-center text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" data-q="${r.Question}" value="${givenVal}" placeholder="-">`;
+                } else {
+                    givenCell = r["Given Answer"] === "-" ? "<span class='text-gray-400'>[BLANK]</span>" : r["Given Answer"];
+                }
+
+                html += `<tr class="border-b ${cssClass}"><td class="p-1 font-bold">${r.Question}</td><td class="p-1">${givenCell}</td><td class="p-1">${r["Correct Answer"] || "-"}</td><td class="p-1 text-right">${statusText}</td></tr>`;
+            });
+            return html;
+        }
+
+        function toggleAccordion(id) {
+            const content = document.getElementById(`content-${id}`);
+            const icon = document.getElementById(`icon-${id}`);
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.classList.add('rotate-180');
+            } else {
+                content.classList.add('hidden');
+                icon.classList.remove('rotate-180');
+            }
+        }
+
+        function expandAllResults() {
+            currentBulkResults.forEach(r => {
+                document.getElementById(`content-${r.id}`).classList.remove('hidden');
+                document.getElementById(`icon-${r.id}`).classList.add('rotate-180');
+            });
+        }
+
+        function toggleEditMode(id) {
+            const data = currentBulkResults.find(r => r.id === id);
+            if (!data) return;
+
+            // switch answers table to edit mode
+            document.getElementById(`table-body-${id}`).innerHTML = generateTableRowsHTML(data.report, id, true);
+            // switch student info to edit mode
+            document.getElementById(`info-display-${id}`).innerHTML = generateStudentInfoHTML(data.student_info, id, true);
+            document.getElementById(`edit-btn-${id}`).classList.add('hidden');
+            document.getElementById(`save-section-${id}`).classList.remove('hidden');
+        }
+
+        function cancelEditMode(id) {
+            const data = currentBulkResults.find(r => r.id === id);
+            if (!data) return;
+
+            // switch back to read only
+            document.getElementById(`table-body-${id}`).innerHTML = generateTableRowsHTML(data.report, id, false);
+            document.getElementById(`info-display-${id}`).innerHTML = generateStudentInfoHTML(data.student_info, id, false);
+            document.getElementById(`edit-btn-${id}`).classList.remove('hidden');
+            document.getElementById(`save-section-${id}`).classList.add('hidden');
+        }
+
+        async function saveEditedResult(id) {
+            const data = currentBulkResults.find(r => r.id === id);
+            if (!data) return;
+
+            // collect edited answers
+            let newAnswers = {};
+            document.querySelectorAll(`.edit-input-${id}`).forEach(inp => {
+                let q = inp.getAttribute('data-q');
+                let val = inp.value.trim().toUpperCase() || "-";
+                newAnswers[q] = val;
+            });
+
+            // collect edited student info
+            let newStudentInfo = {};
+            document.querySelectorAll(`.info-val-${id}`).forEach(inp => {
+                let key = inp.getAttribute('data-key');
+                let val = inp.value.trim();
+                if (key && val) newStudentInfo[key] = val;
+            });
+
+            const payload = {
+                result_id: id,
+                answers: newAnswers,
+                student_info: newStudentInfo
+            };
+
+            const btn = document.querySelector(`#save-section-${id} button.bg-green-600`);
+            btn.innerText = "Saving...";
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_URL}/grade/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const out = await res.json();
+
+                if (res.ok) {
+                    // update frontend data with what backend returned
+                    data.score = out.score;
+                    data.report = out.report;
+                    if (out.student_info) data.student_info = out.student_info;
+
+                    // if backend sent a new image, update it
+                    if (out.image_b64) {
+                        data.image_b64 = out.image_b64;
+                        let imgEl = document.querySelector(`#content-${id} img`);
+                        if (imgEl) imgEl.src = `data:image/jpeg;base64,${out.image_b64}`;
+                    }
+
+                    // update the score in the header
+                    let pct = Math.round((out.score / out.total) * 100);
+                    let hasBlanks = out.report.some(r => r["Given Answer"] === "-");
+                    let pm = out.passing_marks || 0;
+
+                    let colorClass = "";
+                    let bgClass = "bg-white";
+
+                    if (hasBlanks) {
+                        colorClass = "text-yellow-600";
+                        bgClass = "bg-yellow-50";
+                    } else if (out.score >= pm && pm > 0) {
+                        colorClass = "text-green-600";
+                        bgClass = "bg-green-50";
+                    } else if (out.score < pm && pm > 0) {
+                        colorClass = "text-red-600";
+                        bgClass = "bg-red-50";
+                    } else {
+                        colorClass = pct >= 70 ? "text-green-600" : (pct >= 50 ? "text-yellow-600" : "text-red-600");
+                    }
+
+                    document.getElementById(`score-preview-${id}`).className = `font-black text-xl ${colorClass}`;
+                    document.getElementById(`score-preview-${id}`).innerHTML = `${out.score} / ${out.total} <span class="text-sm font-bold opacity-75">(${pct}%)</span>`;
+
+                    // also update the student name in the accordion header
+                    if (out.student_info && Object.keys(out.student_info).length > 0) {
+                        let studentStr = Object.entries(out.student_info).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                        let headerSpan = document.querySelector(`#accordion-item-${id} .font-bold.text-gray-800`);
+                        if (headerSpan) headerSpan.innerText = studentStr;
+                    }
+
+                    let hdrBtn = document.querySelector(`#accordion-item-${id} > button`);
+                    hdrBtn.className = `w-full px-6 py-4 flex justify-between items-center ${bgClass} hover:brightness-95 transition-colors focus:outline-none`;
+
+                    cancelEditMode(id);
+                } else {
+                    alert("Error saving: " + out.error);
+                }
+            } catch (e) {
+                alert("Network error while saving.");
+            } finally {
+                btn.innerText = "Save Changes";
+                btn.disabled = false;
+            }
+        }
+
+        // results history and csv download
+        let currentResultsData = [];
+        let filteredResultsData = [];
+
+        async function loadResultsTable() {
+            try {
+                const tbody = document.getElementById('results-table-body');
+                tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-gray-500">Loading results...</td></tr>';
+
+                const res = await fetch(`${API_URL}/results`);
+                const data = await res.json();
+                currentResultsData = data.results || [];
+
+                // Populate Answer Key Filter Dropdown
+                const keyMap = new Map();
+                currentResultsData.forEach(r => {
+                    let label = `${r.subject_name || r.eval_id}${r.exam_date ? ` - ${r.exam_date}` : ''} [ID: ${r.eval_id}]`;
+                    keyMap.set(r.eval_id, label);
+                });
+                const keySelect = document.getElementById('filter-key');
+                keySelect.innerHTML = '<option value="">All Answer Keys...</option>';
+                Array.from(keyMap.entries()).sort().forEach(([k, label]) => {
+                    keySelect.innerHTML += `<option value="${k}">${label}</option>`;
+                });
+
+                applyResultsFilter();
+
+            } catch (e) {
+                document.getElementById('results-table-body').innerHTML = '<tr><td colspan="6" class="p-8 text-center text-red-500">Failed to load API.</td></tr>';
+            }
+        }
+
+        function applyResultsFilter() {
+            const searchTerm = document.getElementById('filter-search').value.toLowerCase();
+            const filterKey = document.getElementById('filter-key').value;
+            const minPct = parseFloat(document.getElementById('filter-min-pct').value) || 0;
+            const maxPct = parseFloat(document.getElementById('filter-max-pct').value) || 100;
+
+            filteredResultsData = currentResultsData.filter(r => {
+                let pct = Math.round((r.score / r.total) * 100);
+                if (pct < minPct || pct > maxPct) return false;
+                if (filterKey && r.eval_id !== filterKey) return false;
+
+                if (searchTerm) {
+                    let studentInfoStr = typeof r.student_info === 'object' ? JSON.stringify(r.student_info).toLowerCase() : String(r.student_info || "").toLowerCase();
+                    let subjectStr = (r.subject_name || "").toLowerCase();
+                    let dateStr = (r.exam_date || "").toLowerCase();
+                    if (!studentInfoStr.includes(searchTerm) && !r.eval_id.toLowerCase().includes(searchTerm) && !subjectStr.includes(searchTerm) && !dateStr.includes(searchTerm)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            renderResultsTable();
+        }
+
+        function renderResultsTable() {
+            const tbody = document.getElementById('results-table-body');
+            tbody.innerHTML = "";
+
+            // update summary stats
+            const statsBar = document.getElementById('results-stats');
+            if (filteredResultsData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="p-8 text-center text-gray-500 italic">No grading history found matching filters.</td></tr>';
+                statsBar.classList.add('hidden');
+                return;
+            }
+
+            // calculate stats
+            let totalPapers = filteredResultsData.length;
+            let passCount = 0, failCount = 0, totalPct = 0;
+            filteredResultsData.forEach(r => {
+                let pct = Math.round((r.score / r.total) * 100);
+                totalPct += pct;
+                let pm = r.passing_marks || 0;
+                if (pm > 0) {
+                    if (r.score >= pm) passCount++;
+                    else failCount++;
+                } else {
+                    if (pct >= 50) passCount++;
+                    else failCount++;
+                }
+            });
+            let avgPct = Math.round(totalPct / totalPapers);
+
+            document.getElementById('stat-total').innerText = totalPapers;
+            document.getElementById('stat-pass').innerText = passCount;
+            document.getElementById('stat-fail').innerText = failCount;
+            document.getElementById('stat-avg').innerText = avgPct + '%';
+            statsBar.classList.remove('hidden');
+
+            filteredResultsData.forEach((r, idx) => {
+                let pct = Math.round((r.score / r.total) * 100);
+
+                let hasBlanks = r.report && r.report.some(x => x["Given Answer"] === "-");
+                let pm = r.passing_marks || 0;
+
+                let colorClass = "";
+
+                if (hasBlanks) {
+                    colorClass = "text-yellow-600 font-bold";
+                } else if (r.score >= pm && pm > 0) {
+                    colorClass = "text-green-600 font-bold";
+                } else if (r.score < pm && pm > 0) {
+                    colorClass = "text-red-600 font-bold";
+                } else {
+                    colorClass = pct >= 70 ? "text-green-600 font-bold" : (pct >= 50 ? "text-yellow-600 font-bold" : "text-red-600 font-bold");
+                }
+
+                let studentInfoHTML = "Unknown";
+                if (typeof r.student_info === 'object' && r.student_info !== null) {
+                    if (Object.keys(r.student_info).length > 0) {
+                        studentInfoHTML = Object.entries(r.student_info).map(([k, v]) => `<span class="font-semibold text-gray-700">${k}:</span> ${v}`).join('<br>');
+                    } else {
+                        studentInfoHTML = "No Data";
+                    }
+                } else if (r.student_info) {
+                    studentInfoHTML = r.student_info;
+                }
+
+                let tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 border-b";
+                let subjectStr = r.subject_name || '<span class="text-gray-400 italic">No Subject</span>';
+                let dateStr = r.exam_date ? `<br><span class="text-xs text-blue-600">${r.exam_date}</span>` : '';
+                tr.innerHTML = `
+                    <td class="p-4 text-gray-400 font-mono text-xs">${idx + 1}</td>
+                    <td class="p-4 text-gray-500 text-xs">${r.timestamp}${r.edited ? '<br><span class="inline-block mt-1 bg-orange-100 text-orange-700 text-[10px] font-bold px-2 py-0.5 rounded">Edited</span>' : ''}</td>
+                    <td class="p-4 font-medium">${subjectStr}${dateStr}<br><span class="text-xs text-gray-400 font-normal">[ID: ${r.eval_id}]</span></td>
+                    <td class="p-4 text-sm">${studentInfoHTML}</td>
+                    <td class="p-4 text-xl ${colorClass}">${r.score}/${r.total}</td>
+                    <td class="p-4 ${colorClass}">${pct}%</td>
+                    <td class="p-4 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                            <button onclick="openDetailModal('${r.id}')" class="text-blue-600 hover:text-blue-800 text-xs font-semibold px-2 py-1 rounded hover:bg-blue-50" title="View Details">View</button>
+                            <button onclick="openDetailModal('${r.id}', true)" class="text-orange-600 hover:text-orange-800 text-xs font-semibold px-2 py-1 rounded hover:bg-orange-50" title="Edit">Edit</button>
+                            <button onclick="deleteResult('${r.id}')" class="text-red-600 hover:text-red-800 text-xs font-semibold px-2 py-1 rounded hover:bg-red-50" title="Delete">Delete</button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // stores the currently open result in the detail modal
+        let detailModalData = null;
+
+        async function openDetailModal(id, startInEditMode = false) {
+            // show modal with loading state
+            document.getElementById('result-detail-modal').classList.remove('hidden');
+            document.getElementById('detail-modal-title').innerText = 'Loading...';
+            document.getElementById('detail-modal-image').src = '';
+            document.getElementById('detail-info-display').innerHTML = '';
+            document.getElementById('detail-table-body').innerHTML = '';
+            document.getElementById('detail-score-display').innerText = '-';
+
+            try {
+                const res = await fetch(`${API_URL}/results/${id}`);
+                const data = await res.json();
+
+                if (!res.ok) {
+                    alert('Could not load result: ' + (data.error || 'unknown error'));
+                    closeDetailModal();
+                    return;
+                }
+
+                detailModalData = data;
+
+                // set title
+                let studentStr = "Unknown Student";
+                if (data.student_info && Object.keys(data.student_info).length > 0) {
+                    studentStr = Object.entries(data.student_info).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                }
+                document.getElementById('detail-modal-title').innerText = studentStr + ' [ID: ' + id + ']';
+
+                // set image
+                if (data.image_b64) {
+                    document.getElementById('detail-modal-image').src = 'data:image/jpeg;base64,' + data.image_b64;
+                }
+
+                // set score
+                let pct = Math.round((data.score / data.total) * 100);
+                let scoreColor = pct >= 70 ? 'text-green-600' : (pct >= 50 ? 'text-yellow-600' : 'text-red-600');
+                document.getElementById('detail-score-display').className = `font-black text-xl ${scoreColor}`;
+                document.getElementById('detail-score-display').innerHTML = `${data.score} / ${data.total} <span class="text-sm opacity-75">(${pct}%)</span>`;
+
+                // set student info (read only)
+                document.getElementById('detail-info-display').innerHTML = generateStudentInfoHTML(data.student_info, 'detail', false);
+
+                // set answers table (read only)
+                document.getElementById('detail-table-body').innerHTML = generateTableRowsHTML(data.report || [], 'detail', false);
+
+                // make sure we are in read-only mode
+                document.getElementById('detail-edit-btn').classList.remove('hidden');
+                document.getElementById('detail-save-section').classList.add('hidden');
+
+                // if caller wanted edit mode, switch to it
+                if (startInEditMode) {
+                    toggleDetailEditMode();
+                }
+
+            } catch (e) {
+                alert('Network error loading result');
+                closeDetailModal();
+            }
+        }
+
+        function closeDetailModal() {
+            document.getElementById('result-detail-modal').classList.add('hidden');
+            detailModalData = null;
+        }
+
+        function toggleDetailEditMode() {
+            if (!detailModalData) return;
+            document.getElementById('detail-table-body').innerHTML = generateTableRowsHTML(detailModalData.report || [], 'detail', true);
+            document.getElementById('detail-info-display').innerHTML = generateStudentInfoHTML(detailModalData.student_info, 'detail', true);
+            document.getElementById('detail-edit-btn').classList.add('hidden');
+            document.getElementById('detail-save-section').classList.remove('hidden');
+        }
+
+        function cancelDetailEdit() {
+            if (!detailModalData) return;
+            document.getElementById('detail-table-body').innerHTML = generateTableRowsHTML(detailModalData.report || [], 'detail', false);
+            document.getElementById('detail-info-display').innerHTML = generateStudentInfoHTML(detailModalData.student_info, 'detail', false);
+            document.getElementById('detail-edit-btn').classList.remove('hidden');
+            document.getElementById('detail-save-section').classList.add('hidden');
+        }
+
+        async function saveDetailEdit() {
+            if (!detailModalData) return;
+            let id = detailModalData.id;
+
+            // collect edited answers
+            let newAnswers = {};
+            document.querySelectorAll('.edit-input-detail').forEach(inp => {
+                let q = inp.getAttribute('data-q');
+                let val = inp.value.trim().toUpperCase() || "-";
+                newAnswers[q] = val;
+            });
+
+            // collect edited student info
+            let newStudentInfo = {};
+            document.querySelectorAll('.info-val-detail').forEach(inp => {
+                let key = inp.getAttribute('data-key');
+                let val = inp.value.trim();
+                if (key && val) newStudentInfo[key] = val;
+            });
+
+            const saveBtn = document.querySelector('#detail-save-section button.bg-green-600');
+            saveBtn.innerText = "Saving...";
+            saveBtn.disabled = true;
+
+            try {
+                const res = await fetch(`${API_URL}/grade/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        result_id: id,
+                        answers: newAnswers,
+                        student_info: newStudentInfo
+                    })
+                });
+
+                const out = await res.json();
+
+                if (res.ok) {
+                    // update the modal data
+                    detailModalData.score = out.score;
+                    detailModalData.report = out.report;
+                    if (out.student_info) detailModalData.student_info = out.student_info;
+                    if (out.image_b64) {
+                        detailModalData.image_b64 = out.image_b64;
+                        document.getElementById('detail-modal-image').src = 'data:image/jpeg;base64,' + out.image_b64;
+                    }
+
+                    // update score display
+                    let pct = Math.round((out.score / out.total) * 100);
+                    let scoreColor = pct >= 70 ? 'text-green-600' : (pct >= 50 ? 'text-yellow-600' : 'text-red-600');
+                    document.getElementById('detail-score-display').className = `font-black text-xl ${scoreColor}`;
+                    document.getElementById('detail-score-display').innerHTML = `${out.score} / ${out.total} <span class="text-sm opacity-75">(${pct}%)</span>`;
+
+                    // update title
+                    if (out.student_info && Object.keys(out.student_info).length > 0) {
+                        let studentStr = Object.entries(out.student_info).map(([k, v]) => `${k}: ${v}`).join(' | ');
+                        document.getElementById('detail-modal-title').innerText = studentStr + ' [ID: ' + id + ']';
+                    }
+
+                    cancelDetailEdit();
+
+                    // also refresh the results table in the background
+                    loadResultsTable();
+                } else {
+                    alert("Error saving: " + out.error);
+                }
+            } catch (e) {
+                alert("Network error while saving.");
+            } finally {
+                saveBtn.innerText = "Save Changes";
+                saveBtn.disabled = false;
+            }
+        }
+
+        async function deleteResult(id) {
+            if (!confirm("Are you sure you want to delete this result? This cannot be undone.")) return;
+
+            try {
+                const res = await fetch(`${API_URL}/results/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+
+                if (res.ok) {
+                    loadResultsTable();
+                } else {
+                    alert("Error deleting: " + (data.error || "unknown error"));
+                }
+            } catch (e) {
+                alert("Network error while deleting.");
+            }
+        }
+
+        function exportResultsCSV() {
+            if (filteredResultsData.length === 0) return alert("No data to export based on current filters.");
+
+            // Build CSV Headers (static columns + dynamic info columns + max questions)
+            let maxQuestions = 0;
+            let infoKeys = new Set();
+
+            filteredResultsData.forEach(r => {
+                if (r.report && r.report.length > maxQuestions) {
+                    maxQuestions = r.report.length;
+                }
+                if (typeof r.student_info === 'object' && r.student_info !== null) {
+                    Object.keys(r.student_info).forEach(k => infoKeys.add(k));
+                }
+            });
+
+            let infoColumns = Array.from(infoKeys);
+
+            let csvRows = [];
+
+            // Header Row
+            let header = ["Timestamp", "Subject Name", "Exam Date", "Answer Key ID", "Score", "Total", "Percentage"];
+            infoColumns.forEach(c => header.push(`"${c}"`)); // Add dynamic info columns
+
+            for (let i = 1; i <= maxQuestions; i++) {
+                header.push(`Q${i} Correct Answer`);
+                header.push(`Q${i} Answered`);
+                header.push(`Q${i} Mark`);
+            }
+            csvRows.push(header.join(','));
+
+            // Data Rows
+            filteredResultsData.forEach(r => {
+                let row = [
+                    `"${r.timestamp}"`,
+                    `"${r.subject_name || ''}"`,
+                    `"${r.exam_date || ''}"`,
+                    `"${r.eval_id}"`,
+                    r.score,
+                    r.total,
+                    Math.round((r.score / r.total) * 100) + "%"
+                ];
+
+                // Add data for info columns
+                infoColumns.forEach(c => {
+                    if (typeof r.student_info === 'object' && r.student_info !== null && r.student_info[c] !== undefined) {
+                        row.push(`"${r.student_info[c]}"`);
+                    } else {
+                        row.push('""');
+                    }
+                });
+
+                if (r.report) {
+                    r.report.forEach(q => {
+                        row.push(`"${q["Correct Answer"] || ''}"`);
+                        row.push(`"${q["Given Answer"] || ''}"`);
+                        row.push(q["Mark"] === 1 ? 1 : 0);
+                    });
+                }
+
+                // Pad with empty cells if this student answered fewer questions
+                let padCount = (maxQuestions - (r.report ? r.report.length : 0)) * 3;
+                for (let i = 0; i < padCount; i++) {
+                    row.push("");
+                }
+
+                csvRows.push(row.join(','));
+            });
+
+            // Trigger Download
+            let csvContent = "data:text/csv;charset=utf-8," + csvRows.join('\n');
+            let encodedUri = encodeURI(csvContent);
+            let link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            let dateStr = new Date().toISOString().split('T')[0];
+            link.setAttribute("download", `Grades_Export_${dateStr}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    </script>
+</body>
+
+</html>
